@@ -33,13 +33,24 @@ core does not need rewriting.
 | Graceful quit | `NSRunningApplication.terminate()` | Post `WM_CLOSE` to the app's top-level windows so it can prompt to save. `TerminateProcess` only as a separate HIGH-risk, always-confirmed action. |
 | Diagnostics | arm64 / Rosetta, PyObjC | Architecture, Python bitness, Build Tools present |
 
-### Later phases
+### Background service (Phase 3 interfaces)
 
-* **Hotkeys (Phase 3):** `RegisterHotKey` via `ctypes` on a message-loop thread
-  (or `pynput`, if it is chosen for macOS too).
-* **Start at login (Phase 3):** a Task Scheduler task triggered "at log on" for
-  the current user, or a Startup-folder shortcut. Not a Windows Service: services
-  run in session 0 and cannot interact with the user's desktop.
+| Interface | macOS (implemented) | Windows (plan) |
+|---|---|---|
+| `EventLoop` | AppKit run loop (accessory app) | Win32 message loop (`GetMessage`) on the main thread; `call_soon` via `PostThreadMessage` |
+| `HotkeyListener` | Carbon `RegisterEventHotKey` (no extra permission) | `RegisterHotKey` via `ctypes` (also needs no special permission); `WM_HOTKEY` in the message loop |
+| `UserInterface` | `NSAlert` dialogs | `MessageBoxW` for confirm/show; a small Win32 or Tk input box for prompts |
+| `ServiceManager` | launchd Launch Agent (`launchctl`) | Task Scheduler task "at log on" for the current user (`schtasks` or COM). Not a Windows Service: services run in session 0 and can't show dialogs or receive hotkeys. |
+| Shutdown signal | SIGTERM via `SignalBridge` | `WM_CLOSE`/`WM_ENDSESSION` to a hidden window, plus `SetConsoleCtrlHandler` when run in a console |
+| Control channel | Unix socket (0600, peer uid check) | Named pipe with an ACL for the current user only (AF_UNIX on Windows lacks peer-credential checks) |
+| Single instance | `flock` | Named mutex (`CreateMutexW`) |
+
+The headless mode (`jarvis daemon --headless`) uses only the portable
+`QueueEventLoop`, so it is the natural first target on Windows. `SignalBridge`
+relies on POSIX `set_wakeup_fd` semantics, and Windows needs the console
+control handler above instead.
+
+### Later phases
 * **Speech (Phase 5):** Windows SAPI / `Windows.Media.SpeechSynthesis` for output.
   The local speech-to-text engine chosen in Phase 5 for input.
 * **Browser automation (Phase 4):** Playwright is cross-platform and needs no
