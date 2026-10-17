@@ -37,6 +37,7 @@ def make_runtime(
         policy: dict[str, object] | None = None,
         applications: dict[str, object] | None = None,
         ai: dict[str, object] | None = None,
+        files: dict[str, object] | None = None,
         cancel_event: threading.Event | None = None,
     ) -> tuple[Runtime, ScriptedConfirmer]:
         config = JarvisConfig.model_validate(
@@ -50,6 +51,7 @@ def make_runtime(
                 "policy": policy or {},
                 "ai": {"idle_unload_seconds": 0, **(ai or {})},
                 "agent": {"retry_backoff_seconds": 0.0},
+                "files": files or {},
             }
         )
         confirmer = ScriptedConfirmer(confirm)
@@ -67,3 +69,13 @@ def make_runtime(
     yield factory
     for runtime in runtimes:
         runtime.close()
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A throwaway home folder (HOME is redirected) with the usual top-level folders."""
+    path = tmp_path / "home"
+    for name in ("Desktop", "Documents", "Downloads", "Library", "Pictures"):
+        (path / name).mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(path))
+    return path.resolve()

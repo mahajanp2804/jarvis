@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import deque
 from collections.abc import Sequence
 from pathlib import Path
@@ -80,6 +81,26 @@ class FakePlatform(PlatformAdapter):
 
     def __init__(self, apps: FakeAppControl | None = None) -> None:
         self._apps = apps or FakeAppControl()
+        self.opened: list[tuple[Path, str | None]] = []
+        self.trash: list[Path] = []
+        self.index: list[Path] | None = None  # None = no search index (folder scan)
+
+    def find_by_name(
+        self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
+    ) -> list[Path] | None:
+        return None if self.index is None else list(self.index)
+
+    def open_path(self, path: Path, app: AppInfo | None = None) -> None:
+        self.opened.append((path, app.name if app else None))
+
+    def move_to_trash(self, path: Path) -> Path | None:
+        import shutil
+
+        self.trash.append(path)
+        bin_dir = Path(os.environ["HOME"]) / ".Trash"
+        bin_dir.mkdir(exist_ok=True)
+        shutil.move(str(path), str(bin_dir / path.name))
+        return bin_dir / path.name
 
     @property
     def apps(self) -> FakeAppControl:

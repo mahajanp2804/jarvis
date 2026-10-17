@@ -21,6 +21,7 @@ import logging
 import os
 import platform
 import plistlib
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 OPEN_BIN = "/usr/bin/open"
+MDFIND_BIN = "/usr/bin/mdfind"
 SYSCTL_BIN = "/usr/sbin/sysctl"
 _SUBPROCESS_TIMEOUT = 15.0
 
@@ -329,6 +331,63 @@ class MacOSPlatform(PlatformAdapter):
 
     def process_stats(self, pid: int | None = None) -> ProcessStats | None:
         return read_process_stats(pid)
+
+    def find_by_name(
+        self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
+    ) -> list[Path] | None:
+        """Spotlight name search: fast (indexed) and no polling.
+
+        ``words`` are reduced to letters and digits, so model-supplied text
+        can't alter the Spotlight query.
+        """
+        safe = [re.sub(r"[^0-9a-z]", "", w.lower()) for w in words]
+        safe = [w for w in safe if w]
+        if not safe:
+            return []
+        clauses = [f'kMDItemFSName == "*{w}*"cd' for w in safe]
+        if folders_only:
+            clauses.append('kMDItemContentType == "public.folder"')
+        query = " && ".join(clauses)
+        found: list[Path] = []
+        for root in roots:
+            if not root.is_dir():
+                continue
+            try:
+                proc = self._run(
+                    [MDFIND_BIN, "-onlyin", str(root), query],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if proc.returncode != 0:
+                return None
+            found.extend(Path(line) for line in proc.stdout.splitlines() if line.strip())
+        return list(dict.fromkeys(found))
+
+    def open_path(self, path: Path, app: AppInfo | None = None) -> None:
+        argv = [OPEN_BIN, "-a", str(app.path), str(path)] if app else [OPEN_BIN, str(path)]
+        try:
+            proc = self._run(argv, capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ToolExecutionError(f"Could not open {path.name}: {exc}") from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
+            raise ToolExecutionError(f"macOS could not open {path.name}: {detail}")
+
+    def move_to_trash(self, path: Path) -> Path | None:
+        from Foundation import NSURL, NSFileManager
+
+        ok, result_url, error = (
+            NSFileManager.defaultManager().trashItemAtURL_resultingItemURL_error_(
+                NSURL.fileURLWithPath_(str(path)), None, None
+            )
+        )
+        if not ok:
+            reason = error.localizedDescription() if error is not None else "unknown error"
+            raise ToolExecutionError(f"Could not move {path.name} to the Trash: {reason}")
+        return Path(str(result_url.path())) if result_url is not None else None
 
     def event_loop(self, *, headless: bool) -> EventLoop:
         if headless:

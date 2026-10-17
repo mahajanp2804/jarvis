@@ -204,4 +204,3 @@ def test_cancellation_stops_retrying(tmp_path: Path) -> None:
     result = d.execute(call("t.get"))
     assert len(runs) == 1  # the 5 s backoff was interrupted by the cancel event
     assert result.status is ToolStatus.FAILED
-

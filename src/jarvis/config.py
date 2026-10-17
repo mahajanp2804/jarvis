@@ -168,6 +168,46 @@ class AIConfig(_Section):
         return self.model_path or default_models_dir() / DEFAULT_MODEL.filename
 
 
+DEFAULT_PROJECT_ROOTS = (
+    "~/Desktop",
+    "~/Documents",
+    "~/Developer",
+    "~/Projects",
+    "~/code",
+    "~/src",
+    "~/repos",
+    "~/dev",
+    "~/GitHub",
+    "~/workspace",
+)
+
+
+def _paths(*items: str) -> list[Path]:
+    return [Path(item) for item in items]
+
+
+class FilesConfig(_Section):
+    """Where the file, project and terminal tools may read and write.
+
+    Paths may start with "~". Symlinks are resolved before checking, so a link
+    can't escape these folders.
+    """
+
+    read_roots: list[Path] = Field(default_factory=lambda: _paths("~"))
+    write_roots: list[Path] = Field(
+        default_factory=lambda: _paths("~/Desktop", "~/Documents", "~/Downloads")
+    )
+    # Searched by projects.find, in this order.
+    project_roots: list[Path] = Field(default_factory=lambda: _paths(*DEFAULT_PROJECT_ROOTS))
+    # Never read or changed, even inside a root. ~/Library also holds Jarvis's
+    # own config and audit log, so tools can't alter them.
+    blocked_paths: list[Path] = Field(default_factory=lambda: _paths("~/Library", "~/.Trash"))
+    # Hidden files and folders (.ssh, .env, .git, ...) are off-limits unless true.
+    allow_hidden: bool = False
+    max_read_bytes: int = Field(default=1_000_000, ge=1_000, le=50_000_000)
+    search_seconds: float = Field(default=4.0, gt=0, le=60)
+
+
 class AgentConfig(_Section):
     """How requests are planned, executed, verified and retried."""
 
@@ -214,6 +254,7 @@ class JarvisConfig(_Section):
     applications: ApplicationsConfig = Field(default_factory=ApplicationsConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    files: FilesConfig = Field(default_factory=FilesConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
 
@@ -274,6 +315,22 @@ idle_unload_seconds = 300.0
 # llama.cpp Metal residency keep-alive: ~250 CPU wakeups/s while loaded; off by default.
 metal_residency_sets = false
 include_app_names = true
+
+[files]
+# Folders Jarvis may read, and the subset it may change ("~" = your home folder).
+read_roots = ["~"]
+write_roots = ["~/Desktop", "~/Documents", "~/Downloads"]
+# Searched by projects.find, in this order.
+project_roots = [
+    "~/Desktop", "~/Documents", "~/Developer", "~/Projects", "~/code",
+    "~/src", "~/repos", "~/dev", "~/GitHub", "~/workspace",
+]
+# Never read or changed (~/Library holds app data and Jarvis's own config and logs).
+blocked_paths = ["~/Library", "~/.Trash"]
+# Hidden files and folders (.ssh, .env, .git, ...) are off-limits unless true.
+allow_hidden = false
+max_read_bytes = 1000000
+search_seconds = 4.0
 
 [agent]
 # Plan -> execute -> observe rounds per request (each is one model call).

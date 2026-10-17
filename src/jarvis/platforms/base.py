@@ -140,6 +140,25 @@ class PlatformAdapter(ABC):
         """Memory/CPU/wakeups of ``pid`` (default: this process); ``None`` if unsupported."""
         return None
 
+    # -- files (Phase 4) ---------------------------------------------------------------
+
+    def find_by_name(
+        self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
+    ) -> list[Path] | None:
+        """Indexed name search (all ``words`` in the name), or ``None`` if unavailable.
+
+        Callers must still apply the path policy to every result.
+        """
+        return None
+
+    def open_path(self, path: Path, app: AppInfo | None = None) -> None:
+        """Open a file or folder with its default app, or with ``app``."""
+        raise UnsupportedPlatformError(f"Opening files isn't implemented on {self.name}.")
+
+    def move_to_trash(self, path: Path) -> Path | None:
+        """Move to the Trash (recoverable). Returns the new location if known."""
+        raise UnsupportedPlatformError(f"Moving to the Trash isn't implemented on {self.name}.")
+
     # -- background service (Phase 3) -------------------------------------------------
 
     def event_loop(self, *, headless: bool) -> EventLoop:

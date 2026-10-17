@@ -22,6 +22,9 @@ from jarvis.runtime.audit import AuditLog
 from jarvis.runtime.permissions import Confirmer, Decision, PolicyEngine
 from jarvis.tools.applications import AppCatalog, ApplicationTools
 from jarvis.tools.base import ToolRegistry, ToolSpec
+from jarvis.tools.files import FileTools
+from jarvis.tools.paths import PathPolicy
+from jarvis.tools.projects import ProjectTools
 
 
 @dataclass
@@ -43,6 +46,13 @@ class Runtime:
         if self.models is not None:
             self.models.shutdown()
         self.audit.close()
+
+
+def build_path_policy(config: JarvisConfig) -> PathPolicy:
+    files = config.files
+    return PathPolicy(
+        files.read_roots, files.write_roots, files.blocked_paths, allow_hidden=files.allow_hidden
+    )
 
 
 def build_backend(ai: AIConfig) -> LLMBackend:
@@ -93,7 +103,17 @@ def build_runtime(
     app_tools = ApplicationTools(
         platform.apps, catalog, policy, app_cfg, poll_interval=poll_interval
     )
-    registry = ToolRegistry(app_tools.specs())
+    paths = build_path_policy(config)
+    file_tools = FileTools(
+        platform,
+        paths,
+        catalog,
+        policy,
+        config.files,
+        undo_dir=config.general.resolved_log_dir() / "undo",
+    )
+    project_tools = ProjectTools(file_tools, paths, config.files)
+    registry = ToolRegistry([*app_tools.specs(), *file_tools.specs(), *project_tools.specs()])
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
         registry,
