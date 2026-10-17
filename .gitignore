@@ -1,0 +1,42 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python build / cache artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Model weights: never commit (multi-GB, separately licensed)
+models/*
+!models/README.md
+*.gguf
+*.bin
+*.safetensors
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config.toml
+
+# Personal data, memory databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.jsonl
+logs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

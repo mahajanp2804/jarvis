@@ -1,0 +1,4 @@
+# Runtime dependencies (mirrors [project.dependencies] in pyproject.toml).
+# Tested versions: pydantic 2.14.1, pyobjc-framework-Cocoa 12.2.2 (Python 3.14.3, macOS 27, M4).
+pydantic>=2.9,<3
+pyobjc-framework-Cocoa>=11.0,<13; sys_platform == "darwin"

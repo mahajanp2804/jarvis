@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-assistant"
+version = "0.1.0"
+description = "A local, low-overhead personal AI computer assistant (macOS first, Windows later)."
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["assistant", "automation", "llama.cpp", "macos", "agent"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+# Keep runtime dependencies minimal. Each one is justified in README.md.
+dependencies = [
+    "pydantic>=2.9,<3",
+    "pyobjc-framework-Cocoa>=11.0,<13; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+# Local inference. Built from source by pip (needs Xcode Command Line Tools on macOS).
+llm = [
+    "llama-cpp-python>=0.3.36,<0.4",
+]
+dev = [
+    "pytest>=8.3,<10",
+    "ruff>=0.8,<1",
+    "mypy>=1.13,<2",
+]
+
+[project.scripts]
+jarvis = "jarvis.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: touches the real operating system (read-only unless also marked gui)",
+    "gui: launches/quits a real application; opt in with JARVIS_RUN_GUI_TESTS=1",
+    "model: loads the real local model (~3 GB); opt in with JARVIS_RUN_MODEL_TESTS=1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PTH"]
+ignore = [
+    "S603",  # subprocess calls use fixed argv lists without a shell; reviewed individually
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["jarvis"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["AppKit", "Foundation", "PyObjCTools", "PyObjCTools.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Imported lazily and used through Any; its numpy stubs need Python 3.12 syntax.
+module = ["llama_cpp", "llama_cpp.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
