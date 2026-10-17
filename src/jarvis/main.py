@@ -183,6 +183,22 @@ def _reply_exit(reply: Reply) -> int:
     return _exit_code(reply.results, reply.handled)
 
 
+def _keep_background_processes(runtime: Runtime) -> None:
+    """Background processes belong to this Jarvis process: keep it alive until Ctrl+C."""
+    running = runtime.processes.running()
+    if not running:
+        return
+    for proc in running:
+        where = f" at {proc.url}" if proc.url else ""
+        print(f"{proc.id}: `{proc.command}` is running{where}.")
+    print("Press Ctrl+C to stop (or use `jarvis ask` with the background service).")
+    try:
+        while any(p.running for p in running):
+            threading.Event().wait(1.0)
+    except KeyboardInterrupt:
+        print("\nStopping background processes…")
+
+
 def _show_thinking() -> None:
     print("… thinking", file=sys.stderr, flush=True)
 
@@ -349,7 +365,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     runtime.orchestrator.on_planning = _show_thinking
     try:
         if args.command == "run":
-            return _reply_exit(runtime.orchestrator.handle(" ".join(args.text)))
+            code = _reply_exit(runtime.orchestrator.handle(" ".join(args.text)))
+            _keep_background_processes(runtime)
+            return code
         if args.command == "shell":
             return _run_shell(runtime, cancel)
         if args.command == "apps":

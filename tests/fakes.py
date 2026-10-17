@@ -93,6 +93,9 @@ class FakePlatform(PlatformAdapter):
     def open_path(self, path: Path, app: AppInfo | None = None) -> None:
         self.opened.append((path, app.name if app else None))
 
+    def open_terminal(self, folder: Path) -> None:
+        self.opened.append((folder, "Terminal"))
+
     def move_to_trash(self, path: Path) -> Path | None:
         import shutil
 

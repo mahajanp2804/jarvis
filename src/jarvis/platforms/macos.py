@@ -376,6 +376,11 @@ class MacOSPlatform(PlatformAdapter):
             detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
             raise ToolExecutionError(f"macOS could not open {path.name}: {detail}")
 
+    def open_terminal(self, folder: Path) -> None:
+        self.open_path(
+            folder, AppInfo("Terminal", Path("/System/Applications/Utilities/Terminal.app"))
+        )
+
     def move_to_trash(self, path: Path) -> Path | None:
         from Foundation import NSURL, NSFileManager
 

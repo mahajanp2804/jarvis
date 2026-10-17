@@ -25,6 +25,7 @@ from jarvis.tools.base import ToolRegistry, ToolSpec
 from jarvis.tools.files import FileTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
+from jarvis.tools.terminal import ProcessManager, TerminalTools
 
 
 @dataclass
@@ -40,9 +41,11 @@ class Runtime:
     audit: AuditLog
     models: ModelManager | None
     planner: Planner | None
+    processes: ProcessManager
 
     def close(self) -> None:
-        """Unload the model (if loaded) and close the audit log."""
+        """Stop background processes, unload the model, close the audit log."""
+        self.processes.shutdown()
         if self.models is not None:
             self.models.shutdown()
         self.audit.close()
@@ -113,7 +116,16 @@ def build_runtime(
         undo_dir=config.general.resolved_log_dir() / "undo",
     )
     project_tools = ProjectTools(file_tools, paths, config.files)
-    registry = ToolRegistry([*app_tools.specs(), *file_tools.specs(), *project_tools.specs()])
+    processes = ProcessManager(config.general.resolved_log_dir() / "processes")
+    terminal_tools = TerminalTools(platform, paths, config.terminal, processes)
+    registry = ToolRegistry(
+        [
+            *app_tools.specs(),
+            *file_tools.specs(),
+            *project_tools.specs(),
+            *terminal_tools.specs(),
+        ]
+    )
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
         registry,
@@ -168,4 +180,5 @@ def build_runtime(
         audit=audit,
         models=models,
         planner=planner,
+        processes=processes,
     )

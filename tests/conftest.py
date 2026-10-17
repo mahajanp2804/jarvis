@@ -38,6 +38,7 @@ def make_runtime(
         applications: dict[str, object] | None = None,
         ai: dict[str, object] | None = None,
         files: dict[str, object] | None = None,
+        terminal: dict[str, object] | None = None,
         cancel_event: threading.Event | None = None,
     ) -> tuple[Runtime, ScriptedConfirmer]:
         config = JarvisConfig.model_validate(
@@ -52,6 +53,7 @@ def make_runtime(
                 "ai": {"idle_unload_seconds": 0, **(ai or {})},
                 "agent": {"retry_backoff_seconds": 0.0},
                 "files": files or {},
+                "terminal": terminal or {},
             }
         )
         confirmer = ScriptedConfirmer(confirm)
@@ -79,3 +81,24 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         (path / name).mkdir(parents=True)
     monkeypatch.setenv("HOME", str(path))
     return path.resolve()
+
+
+STUB_PROGRAMS = [
+    "git", "npm", "yarn", "npx", "node", "pytest", "make", "cargo", "go", "streamlit", "pip",
+    "rm", "curl", "bash", "sudo", "ls", "osascript", "launchctl", "perl",
+]  # fmt: skip
+
+
+@pytest.fixture
+def fake_bin(tmp_path: Path) -> Path:
+    """A private PATH: stub executables, plus python3 linked to this interpreter."""
+    import sys
+
+    path = tmp_path / "bin"
+    path.mkdir()
+    for name in STUB_PROGRAMS:
+        stub = path / name
+        stub.write_text("#!/bin/sh\necho stub\n")
+        stub.chmod(0o755)
+    (path / "python3").symlink_to(sys.executable)
+    return path

@@ -155,6 +155,10 @@ class PlatformAdapter(ABC):
         """Open a file or folder with its default app, or with ``app``."""
         raise UnsupportedPlatformError(f"Opening files isn't implemented on {self.name}.")
 
+    def open_terminal(self, folder: Path) -> None:
+        """Open a terminal window in ``folder``."""
+        raise UnsupportedPlatformError(f"Opening a terminal isn't implemented on {self.name}.")
+
     def move_to_trash(self, path: Path) -> Path | None:
         """Move to the Trash (recoverable). Returns the new location if known."""
         raise UnsupportedPlatformError(f"Moving to the Trash isn't implemented on {self.name}.")

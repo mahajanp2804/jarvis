@@ -208,6 +208,36 @@ class FilesConfig(_Section):
     search_seconds: float = Field(default=4.0, gt=0, le=60)
 
 
+DEFAULT_SEARCH_PATH = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+)
+
+
+class TerminalConfig(_Section):
+    """Development commands (see jarvis/tools/commands.py for the allowlist)."""
+
+    # PATH for commands; Jarvis's own environment is never passed on.
+    search_path: list[str] = Field(default_factory=lambda: list(DEFAULT_SEARCH_PATH))
+    # Extra programs you trust; they always ask for confirmation (medium risk).
+    extra_programs: list[str] = Field(default_factory=list)
+    # A command that is still running after this long is stopped.
+    timeout_seconds: float = Field(default=120.0, gt=0, le=3600)
+    # How long to watch a background server's output for a "ready"/URL message.
+    startup_seconds: float = Field(default=10.0, gt=0, le=120)
+
+    @field_validator("search_path")
+    @classmethod
+    def _absolute(cls, value: list[str]) -> list[str]:
+        if any(not item.startswith("/") for item in value):
+            raise ValueError("search_path entries must be absolute folders")
+        return value
+
+
 class AgentConfig(_Section):
     """How requests are planned, executed, verified and retried."""
 
@@ -255,6 +285,7 @@ class JarvisConfig(_Section):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
+    terminal: TerminalConfig = Field(default_factory=TerminalConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
 
@@ -331,6 +362,14 @@ blocked_paths = ["~/Library", "~/.Trash"]
 allow_hidden = false
 max_read_bytes = 1000000
 search_seconds = 4.0
+
+[terminal]
+# PATH for commands (Jarvis's own environment is never passed on).
+search_path = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+# Extra programs you trust; they always ask for confirmation.
+extra_programs = []
+timeout_seconds = 120.0
+startup_seconds = 10.0
 
 [agent]
 # Plan -> execute -> observe rounds per request (each is one model call).
