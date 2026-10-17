@@ -57,6 +57,7 @@ markers = [
     "integration: touches the real operating system (read-only unless also marked gui)",
     "gui: launches/quits a real application; opt in with JARVIS_RUN_GUI_TESTS=1",
     "model: loads the real local model (~3 GB); opt in with JARVIS_RUN_MODEL_TESTS=1",
+    "browser: drives a real headless Chrome against a local test site (skipped if missing)",
 ]
 
 [tool.ruff]

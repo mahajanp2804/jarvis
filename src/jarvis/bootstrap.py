@@ -17,11 +17,13 @@ from jarvis.ai.model_manager import ModelManager
 from jarvis.ai.subprocess_backend import SubprocessBackend
 from jarvis.api.dispatcher import Dispatcher, RetryPolicy
 from jarvis.config import AIConfig, JarvisConfig
+from jarvis.paths import config_dir
 from jarvis.platforms.base import PlatformAdapter
 from jarvis.runtime.audit import AuditLog
 from jarvis.runtime.permissions import Confirmer, Decision, PolicyEngine
 from jarvis.tools.applications import AppCatalog, ApplicationTools
 from jarvis.tools.base import ToolRegistry, ToolSpec
+from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_available
 from jarvis.tools.files import FileTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
@@ -42,10 +44,13 @@ class Runtime:
     models: ModelManager | None
     planner: Planner | None
     processes: ProcessManager
+    browser: BrowserSession | None = None
 
     def close(self) -> None:
-        """Stop background processes, unload the model, close the audit log."""
+        """Stop background processes and the browser, unload the model, close the audit log."""
         self.processes.shutdown()
+        if self.browser is not None:
+            self.browser.close()
         if self.models is not None:
             self.models.shutdown()
         self.audit.close()
@@ -118,14 +123,17 @@ def build_runtime(
     project_tools = ProjectTools(file_tools, paths, config.files)
     processes = ProcessManager(config.general.resolved_log_dir() / "processes")
     terminal_tools = TerminalTools(platform, paths, config.terminal, processes)
-    registry = ToolRegistry(
-        [
-            *app_tools.specs(),
-            *file_tools.specs(),
-            *project_tools.specs(),
-            *terminal_tools.specs(),
-        ]
-    )
+    specs = [
+        *app_tools.specs(),
+        *file_tools.specs(),
+        *project_tools.specs(),
+        *terminal_tools.specs(),
+    ]
+    browser: BrowserSession | None = None
+    if playwright_available():  # optional extra: no browser tools without it
+        browser = BrowserSession(config.browser, config_dir() / "browser-profile")
+        specs += BrowserTools(browser, config.browser).specs()
+    registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
         registry,
@@ -181,4 +189,5 @@ def build_runtime(
         models=models,
         planner=planner,
         processes=processes,
+        browser=browser,
     )

@@ -238,6 +238,28 @@ class TerminalConfig(_Section):
         return value
 
 
+class BrowserConfig(_Section):
+    """Browser automation (Playwright with an installed Chrome, Edge or Brave)."""
+
+    # Show the browser window (recommended, so you see what Jarvis does).
+    headless: bool = False
+    # Browser executable; unset = Chrome, then Edge, Brave, Chromium, Playwright's own.
+    executable: str | None = None
+    # Bing is the default because it serves results to automated browsers; DuckDuckGo,
+    # Brave Search and Startpage answered with bot checks when tested (Oct 2026).
+    search_url: str = "https://www.bing.com/search?q={query}"
+    timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    # Close the browser after this many idle seconds (0 = keep it open).
+    idle_close_seconds: float = Field(default=600.0, ge=0, le=86400)
+
+    @field_validator("search_url")
+    @classmethod
+    def _search_url(cls, value: str) -> str:
+        if not value.startswith("https://") or "{query}" not in value:
+            raise ValueError("search_url must be an https:// URL containing {query}")
+        return value
+
+
 class AgentConfig(_Section):
     """How requests are planned, executed, verified and retried."""
 
@@ -286,6 +308,7 @@ class JarvisConfig(_Section):
     ai: AIConfig = Field(default_factory=AIConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
     terminal: TerminalConfig = Field(default_factory=TerminalConfig)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
 
@@ -370,6 +393,16 @@ search_path = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/
 extra_programs = []
 timeout_seconds = 120.0
 startup_seconds = 10.0
+
+[browser]
+# Show the browser window so you can see (and take over) what Jarvis does.
+headless = false
+# Unset = Google Chrome, then Edge, Brave, Chromium, or Playwright's own Chromium.
+# executable = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+# Must contain {query}. Bing answers automated browsers; several others show bot checks.
+search_url = "https://www.bing.com/search?q={query}"
+timeout_seconds = 20.0
+idle_close_seconds = 600.0
 
 [agent]
 # Plan -> execute -> observe rounds per request (each is one model call).
