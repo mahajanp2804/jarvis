@@ -118,11 +118,17 @@ def _query(timeout: float = 5.0) -> dict[str, Any] | None:
         return None
 
 
-def _wait_and_report(config: JarvisConfig, platform: PlatformAdapter, timeout: float = 20.0) -> int:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def _wait_and_report(config: JarvisConfig, platform: PlatformAdapter, timeout: float = 30.0) -> int:
+    # launchd starts a job at most once per ThrottleInterval (10 s), so a quick
+    # stop/start can take that long; say so instead of looking stuck.
+    started = time.monotonic()
+    noted = False
+    while time.monotonic() - started < timeout:
         if _query(timeout=2) is not None:
             return show_status(config, platform)
+        if not noted and time.monotonic() - started > 2:
+            print("Waiting for launchd to start Jarvis (it allows one start per 10 s)…", flush=True)
+            noted = True
         time.sleep(0.25)
     print(
         "The service did not answer yet. Check `jarvis service status` and "

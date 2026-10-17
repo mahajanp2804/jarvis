@@ -12,6 +12,9 @@ The agent file lives at ``~/Library/LaunchAgents/<label>.plist``:
   not be throttled like a background job. Idle, it uses no CPU anyway.
 * ``ExitTimeOut``: launchd waits this long after SIGTERM before SIGKILL. Jarvis
   shuts down in well under that (measured in the README).
+* ``ThrottleInterval``: launchd starts the job at most once every 10 s. This
+  guards against crash loops and also delays a quick stop/start, which
+  ``jarvis service restart`` waits out.
 
 All ``launchctl`` calls use fixed argument lists, with no shell.
 """
@@ -32,6 +35,9 @@ from jarvis.platforms.base import ServiceManager, ServiceStatus
 
 LAUNCHCTL = "/bin/launchctl"
 EXIT_TIMEOUT_SECONDS = 20
+# launchd starts a job at most once per this many seconds (crash-loop guard).
+# It also delays manual starts, so `restart` must wait out the window.
+THROTTLE_SECONDS = 10
 _NOT_LOADED = 113  # "Could not find service" from `launchctl print`
 
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
@@ -55,7 +61,7 @@ def build_plist(
         "KeepAlive": {"Crashed": True},
         "LimitLoadToSessionType": "Aqua",
         "ProcessType": "Interactive",
-        "ThrottleInterval": 30,
+        "ThrottleInterval": THROTTLE_SECONDS,
         "ExitTimeOut": EXIT_TIMEOUT_SECONDS,
         "WorkingDirectory": str(working_directory),
         "StandardOutPath": str(log_file),

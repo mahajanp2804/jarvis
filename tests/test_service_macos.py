@@ -94,6 +94,8 @@ def test_plist_contents(tmp_path: Path) -> None:
     assert plist["KeepAlive"] == {"Crashed": True}  # clean stops stay stopped
     assert plist["LimitLoadToSessionType"] == "Aqua"
     assert plist["ExitTimeOut"] >= 15
+    # launchd also throttles manual starts by this interval; keep restarts quick.
+    assert plist["ThrottleInterval"] == 10
     plistlib.dumps(plist)  # serialisable
 
 
