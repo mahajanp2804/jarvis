@@ -49,6 +49,7 @@ def make_runtime(
                 },
                 "policy": policy or {},
                 "ai": {"idle_unload_seconds": 0, **(ai or {})},
+                "agent": {"retry_backoff_seconds": 0.0},
             }
         )
         confirmer = ScriptedConfirmer(confirm)

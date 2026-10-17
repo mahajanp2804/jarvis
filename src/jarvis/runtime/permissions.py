@@ -11,6 +11,7 @@ past "yes" can never authorise a future sensitive action.
 
 from __future__ import annotations
 
+import fnmatch
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -45,17 +46,38 @@ class PolicyEngine:
         self._allowlist = {item.casefold() for item in config.app_allowlist}
         self._blocklist = {item.casefold() for item in config.app_blocklist}
 
-    def evaluate_tool(self, tool_name: str, risk: RiskLevel) -> PolicyResult:
-        """Decide whether a tool at a given risk level may run."""
-        if tool_name not in self._config.enabled_tools:
-            return PolicyResult(Decision.DENY, f"tool '{tool_name}' is not in policy.enabled_tools")
+    def is_enabled(self, tool_name: str) -> bool:
+        """Whether ``policy.enabled_tools`` lists the tool (``*`` wildcards allowed)."""
+        patterns = self._config.enabled_tools
+        return any(fnmatch.fnmatchcase(tool_name, pattern) for pattern in patterns)
+
+    def decide(self, risk: RiskLevel, *, tainted: bool = False) -> PolicyResult:
+        """Allow or require confirmation for an action of ``risk``.
+
+        ``tainted`` means the current request has already read untrusted
+        content (a web page, a file, command output). Then any action that
+        changes something needs confirmation, so instructions hidden in that
+        content can't trigger actions on their own.
+        """
         # HIGH and CRITICAL always need confirmation, whatever the configured threshold.
         threshold = min(self._config.confirm_at_or_above, RiskLevel.HIGH)
         if risk >= threshold:
             return PolicyResult(
                 Decision.CONFIRM, f"risk '{risk.name.lower()}' requires confirmation"
             )
+        if tainted and risk > RiskLevel.READ_ONLY:
+            return PolicyResult(
+                Decision.CONFIRM, "the request has read untrusted content (web, files or output)"
+            )
         return PolicyResult(Decision.ALLOW, f"risk '{risk.name.lower()}' is below threshold")
+
+    def evaluate_tool(
+        self, tool_name: str, risk: RiskLevel, *, tainted: bool = False
+    ) -> PolicyResult:
+        """Decide whether a tool at a given risk level may run."""
+        if not self.is_enabled(tool_name):
+            return PolicyResult(Decision.DENY, f"tool '{tool_name}' is not in policy.enabled_tools")
+        return self.decide(risk, tainted=tainted)
 
     def check_app(self, name: str, bundle_id: str | None) -> PolicyResult:
         """Apply the application allow/block lists to a resolved application."""

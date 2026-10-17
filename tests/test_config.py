@@ -27,7 +27,13 @@ def test_defaults() -> None:
     assert config.general.dry_run is False
     assert config.general.log_level == "INFO"
     assert config.policy.confirm_at_or_above is RiskLevel.MEDIUM
-    assert config.policy.enabled_tools == ["apps.list", "apps.open", "apps.quit"]
+    assert config.policy.enabled_tools == [
+        "apps.*",
+        "files.*",
+        "projects.*",
+        "terminal.*",
+        "browser.*",
+    ]
 
 
 def test_missing_default_file_uses_defaults(

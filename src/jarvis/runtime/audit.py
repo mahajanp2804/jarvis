@@ -42,6 +42,9 @@ class AuditLog:
         dry_run: bool,
         duration_ms: float | None = None,
         verified: bool | None = None,
+        risk: str | None = None,
+        attempts: int = 1,
+        tainted: bool = False,
     ) -> None:
         """Append one audit record."""
         entry = {
@@ -50,6 +53,9 @@ class AuditLog:
             "tool": tool,
             "arguments": redact_data(arguments),
             "decision": decision,
+            "risk": risk,
+            "tainted": tainted,
+            "attempts": attempts,
             "status": status,
             "verified": verified,
             "dry_run": dry_run,

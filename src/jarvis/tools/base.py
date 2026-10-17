@@ -36,6 +36,9 @@ class PreparedAction:
     # True when prepare() found nothing to change; run() must then have no side
     # effects, and the dispatcher skips the confirmation prompt.
     noop: bool = False
+    # Risk of this specific call, when it differs from the tool's default
+    # (e.g. `git status` vs `git push` through the same terminal tool).
+    risk: RiskLevel | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,8 @@ class ToolSpec:
     args_model: type[BaseModel]
     risk: RiskLevel
     prepare: Callable[[Any], PreparedAction]
+    # Safe to run twice with the same effect, so transient failures may be retried.
+    idempotent: bool = False
 
     def json_schema(self) -> dict[str, Any]:
         """JSON schema of the arguments (used for constrained LLM output in Phase 2)."""

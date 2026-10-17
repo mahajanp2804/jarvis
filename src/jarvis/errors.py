@@ -14,10 +14,13 @@ from collections.abc import Sequence
 class JarvisError(Exception):
     """Base class for errors that are safe and useful to show to the user."""
 
-    def __init__(self, message: str, *, hint: str | None = None) -> None:
+    def __init__(self, message: str, *, hint: str | None = None, retryable: bool = False) -> None:
         super().__init__(message)
         self.message = message
         self.hint = hint
+        # True for transient failures (timeouts, a page still loading) that an
+        # idempotent tool may safely retry. See Dispatcher.
+        self.retryable = retryable
 
     def __str__(self) -> str:
         return self.message

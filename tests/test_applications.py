@@ -139,6 +139,8 @@ def test_open_that_never_starts_fails_verification(
     assert status is ToolStatus.FAILED
     assert "not running after" in message
     assert result.verified is False  # type: ignore[attr-defined]
+    assert result.attempts == 3  # type: ignore[attr-defined]  # retried: opening is idempotent
+    assert fake_platform.apps.launched == ["Safari"] * 3
 
 
 def test_open_unverifiable_is_reported_honestly(

@@ -209,6 +209,7 @@ class ApplicationTools:
                 args_model=ListAppsArgs,
                 risk=RiskLevel.READ_ONLY,
                 prepare=self._prepare_list,
+                idempotent=True,
             ),
             ToolSpec(
                 name="apps.open",
@@ -216,6 +217,7 @@ class ApplicationTools:
                 args_model=AppNameArgs,
                 risk=RiskLevel.LOW,
                 prepare=self._prepare_open,
+                idempotent=True,  # opening an open app just brings it to the front
             ),
             ToolSpec(
                 name="apps.quit",
@@ -330,6 +332,7 @@ class ApplicationTools:
                 hint="The app may have crashed on launch or be blocked by a system dialog.",
                 data=data,
                 verified=False,
+                retryable=True,
             )
 
         return PreparedAction(description=f"Open {app.name} ({app.path})", run=run)

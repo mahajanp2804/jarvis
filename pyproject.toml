@@ -30,6 +30,14 @@ dependencies = [
 llm = [
     "llama-cpp-python>=0.3.36,<0.4",
 ]
+# Browser automation; drives an installed Chrome (or `jarvis browser install`).
+browser = [
+    "playwright>=1.60,<2",
+]
+# Screenshot text recognition with Apple's Vision framework (on-device).
+screen = [
+    "pyobjc-framework-Vision>=11.0,<13; sys_platform == 'darwin'",
+]
 dev = [
     "pytest>=8.3,<10",
     "ruff>=0.8,<1",

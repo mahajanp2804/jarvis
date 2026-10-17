@@ -76,6 +76,13 @@ class ToolResult(BaseModel):
     verified: bool | None = None  # None: verification not applicable / not possible
     hint: str | None = None
     error_type: str | None = None
+    # The message/data contain content from outside Jarvis (file contents, web
+    # pages, command output, OCR). It is shown to the model only as data, and
+    # later side-effecting steps in the same request need confirmation.
+    untrusted: bool = False
+    # A failure that an idempotent tool may retry (e.g. a page load timeout).
+    retryable: bool = False
+    attempts: int = 1
 
     @property
     def ok(self) -> bool:

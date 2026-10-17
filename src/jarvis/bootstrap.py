@@ -15,7 +15,7 @@ from jarvis.ai.base import LLMBackend
 from jarvis.ai.llama_cpp_backend import LlamaCppBackend
 from jarvis.ai.model_manager import ModelManager
 from jarvis.ai.subprocess_backend import SubprocessBackend
-from jarvis.api.dispatcher import Dispatcher
+from jarvis.api.dispatcher import Dispatcher, RetryPolicy
 from jarvis.config import AIConfig, JarvisConfig
 from jarvis.platforms.base import PlatformAdapter
 from jarvis.runtime.audit import AuditLog
@@ -102,6 +102,10 @@ def build_runtime(
         audit,
         dry_run=config.general.dry_run,
         cancel_event=cancel_event,
+        retry=RetryPolicy(
+            max_retries=config.agent.max_tool_retries,
+            backoff_seconds=config.agent.retry_backoff_seconds,
+        ),
     )
 
     models: ModelManager | None = None
@@ -112,7 +116,7 @@ def build_runtime(
 
         def enabled_tools() -> list[ToolSpec]:
             # The model only sees tools the policy would allow at all.
-            return [s for s in registry if s.name in config.policy.enabled_tools]
+            return [s for s in registry if policy.is_enabled(s.name)]
 
         def permitted_app_names() -> list[str]:
             return [
@@ -137,7 +141,9 @@ def build_runtime(
         platform=platform,
         registry=registry,
         dispatcher=dispatcher,
-        orchestrator=Orchestrator(dispatcher, planner=planner),
+        orchestrator=Orchestrator(
+            dispatcher, planner=planner, history_ttl_seconds=config.agent.history_ttl_seconds
+        ),
         catalog=catalog,
         audit=audit,
         models=models,

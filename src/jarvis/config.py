@@ -33,7 +33,9 @@ CONFIG_ENV_VAR = "JARVIS_CONFIG"
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
-DEFAULT_TOOLS = ["apps.list", "apps.open", "apps.quit"]
+# Tool groups enabled by default ("*" wildcards). Screen capture is opt-in:
+# add "screen.*" to use it.
+DEFAULT_TOOLS = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*"]
 
 
 class _Section(BaseModel):
@@ -166,6 +168,20 @@ class AIConfig(_Section):
         return self.model_path or default_models_dir() / DEFAULT_MODEL.filename
 
 
+class AgentConfig(_Section):
+    """How requests are planned, executed, verified and retried."""
+
+    # Plan -> execute -> observe rounds per request (each round is one model call).
+    max_rounds: int = Field(default=6, ge=1, le=20)
+    # Extra attempts for idempotent tools after a transient failure.
+    max_tool_retries: int = Field(default=2, ge=0, le=5)
+    retry_backoff_seconds: float = Field(default=0.5, ge=0, le=10)
+    # Longest piece of tool output shown to the model per step.
+    max_observation_chars: int = Field(default=1500, ge=200, le=20000)
+    # Forget the conversation after this much inactivity.
+    history_ttl_seconds: float = Field(default=600.0, ge=0, le=86400)
+
+
 class ServiceConfig(_Section):
     """Background service (Launch Agent) behaviour."""
 
@@ -198,6 +214,7 @@ class JarvisConfig(_Section):
     applications: ApplicationsConfig = Field(default_factory=ApplicationsConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
 
 
@@ -226,8 +243,9 @@ discovery_cache_seconds = 60.0
 # "browser" = "Safari"
 
 [policy]
-# Tools Jarvis may use. Anything not listed is denied.
-enabled_tools = ["apps.list", "apps.open", "apps.quit"]
+# Tools Jarvis may use ("*" wildcards allowed). Anything not listed is denied.
+# Screen capture/OCR is opt-in: add "screen.*".
+enabled_tools = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*"]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.
 confirm_at_or_above = "medium"
@@ -256,6 +274,17 @@ idle_unload_seconds = 300.0
 # llama.cpp Metal residency keep-alive: ~250 CPU wakeups/s while loaded; off by default.
 metal_residency_sets = false
 include_app_names = true
+
+[agent]
+# Plan -> execute -> observe rounds per request (each is one model call).
+max_rounds = 6
+# Extra attempts for idempotent tools after a transient failure.
+max_tool_retries = 2
+retry_backoff_seconds = 0.5
+# Longest piece of tool output shown to the model per step.
+max_observation_chars = 1500
+# Forget the conversation after this many idle seconds.
+history_ttl_seconds = 600.0
 
 [service]
 # Global shortcut that opens Jarvis (must include cmd or ctrl): ⌃⌥⌘J by default.
