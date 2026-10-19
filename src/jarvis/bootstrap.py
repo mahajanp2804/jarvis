@@ -174,6 +174,7 @@ def build_runtime(
                 max_steps=ai.max_steps,
                 max_tokens=ai.max_plan_tokens,
                 temperature=ai.temperature,
+                context_tokens=ai.context_length,
             ),
             app_names=permitted_app_names if ai.include_app_names else None,
         )
@@ -184,7 +185,11 @@ def build_runtime(
         registry=registry,
         dispatcher=dispatcher,
         orchestrator=Orchestrator(
-            dispatcher, planner=planner, history_ttl_seconds=config.agent.history_ttl_seconds
+            dispatcher,
+            planner=planner,
+            history_ttl_seconds=config.agent.history_ttl_seconds,
+            max_rounds=config.agent.max_rounds,
+            max_observation_chars=config.agent.max_observation_chars,
         ),
         catalog=catalog,
         audit=audit,

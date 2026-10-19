@@ -153,11 +153,14 @@ class ScriptedConfirmer:
         return self.answer
 
 
-def plan_json(action: str, message: str, *steps: tuple[str, dict[str, Any]]) -> str:
+def plan_json(
+    action: str, message: str, *steps: tuple[str, dict[str, Any]], finish: bool = True
+) -> str:
     """JSON for a plan, as the model would produce it."""
     return json.dumps(
         {
             "action": action,
+            "finish": finish,
             "message": message,
             "steps": [{"tool": tool, "arguments": args} for tool, args in steps],
         }

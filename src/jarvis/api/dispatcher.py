@@ -4,7 +4,7 @@ Pipeline for each :class:`~jarvis.api.schemas.ToolCall`:
 
     look up tool -> validate arguments -> tool enabled? -> prepare (read-only:
     resolve targets, resource policy, per-call risk) -> decide (risk + taint)
-    -> [dry run stops here] -> confirm if required -> run + verify
+    -> [dry run stops here unless read-only] -> confirm if required -> run + verify
     (bounded retries for idempotent tools) -> audit
 
 Expected failures (:class:`~jarvis.errors.JarvisError`) become structured
@@ -164,7 +164,9 @@ class Dispatcher:
         trace["decision"] = verdict.decision.value
         needs_confirm = verdict.decision is Decision.CONFIRM and not prepared.noop
 
-        if self.dry_run:
+        if self.dry_run and risk > RiskLevel.READ_ONLY:
+            # Read-only steps (search, read, inspect) still run, so a dry run of a
+            # multi-step task can show what the later, changing steps would be.
             note = " (would ask for confirmation)" if needs_confirm else ""
             return ToolResult(
                 tool=call.tool,

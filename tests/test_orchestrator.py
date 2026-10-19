@@ -34,24 +34,30 @@ def test_multi_step_plan_executes_in_order(
     assert fake_platform.apps.launched == ["Safari", "Notes"]
 
 
-def test_execution_stops_at_first_unsuccessful_step(
+def test_failure_stops_the_round_and_the_model_sees_why(
     make_runtime: MakeRuntime, fake_llm: FakeLLM, fake_platform: FakePlatform
 ) -> None:
-    fake_llm.replies.append(
-        plan_json(
-            "execute",
-            "Working.",
-            ("apps.open", {"name": "Safari"}),
-            ("apps.open", {"name": "Nonexistent App"}),
-            ("apps.open", {"name": "Notes"}),
-        )
+    fake_llm.replies.extend(
+        [
+            plan_json(
+                "execute",
+                "Working.",
+                ("apps.open", {"name": "Safari"}),
+                ("apps.open", {"name": "Nonexistent App"}),
+                ("apps.open", {"name": "Notes"}),
+            ),
+            plan_json("respond", "I opened Safari, but there is no app called Nonexistent App."),
+        ]
     )
     runtime, _ = make_runtime()
     reply = runtime.orchestrator.handle("open three things")
     assert not reply.ok
-    assert len(reply.results) == 2
+    assert len(reply.results) == 2  # Notes never ran: the round stopped at the failure
     assert fake_platform.apps.launched == ["Safari"]
-    assert "Skipped 1 remaining step(s): apps.open(Notes)." in reply.text
+    observation = fake_llm.calls[1][0][-1]["content"]
+    assert "apps.open" in observation and "No installed application matches" in observation
+    assert reply.text.startswith("I opened Safari, but there is no app")
+    assert "✗ No installed application matches 'Nonexistent App'." in reply.text
 
 
 def test_model_proposed_steps_still_need_confirmation(
@@ -130,14 +136,15 @@ def test_ai_disabled(make_runtime: MakeRuntime, fake_llm: FakeLLM) -> None:
     assert fake_llm.loads == 0
 
 
-def test_on_planning_hook(make_runtime: MakeRuntime) -> None:
+def test_progress_hook(make_runtime: MakeRuntime, fake_llm: FakeLLM) -> None:
+    fake_llm.replies.append(plan_json("execute", "Opening.", ("apps.open", {"name": "Notes"})))
     runtime, _ = make_runtime()
     calls: list[str] = []
-    runtime.orchestrator.on_planning = lambda: calls.append("thinking")
-    runtime.orchestrator.handle("open Safari")
+    runtime.orchestrator.on_progress = calls.append
+    runtime.orchestrator.handle("open Safari")  # rules: no model, no progress
     assert calls == []
-    runtime.orchestrator.handle("hello there")
-    assert calls == ["thinking"]
+    runtime.orchestrator.handle("open my notes app please")
+    assert calls == ["thinking", "apps.open (Notes)"]
 
 
 def test_planner_sees_only_permitted_apps(make_runtime: MakeRuntime, fake_llm: FakeLLM) -> None:

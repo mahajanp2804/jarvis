@@ -199,8 +199,8 @@ def _keep_background_processes(runtime: Runtime) -> None:
         print("\nStopping background processes…")
 
 
-def _show_thinking() -> None:
-    print("… thinking", file=sys.stderr, flush=True)
+def _show_progress(message: str) -> None:
+    print(f"… {message}", file=sys.stderr, flush=True)
 
 
 def _run_shell(runtime: Runtime, cancel: threading.Event) -> int:
@@ -371,7 +371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     cancel = threading.Event()
     runtime = build_runtime(config, platform, InteractiveConfirmer(), cancel_event=cancel)
-    runtime.orchestrator.on_planning = _show_thinking
+    runtime.orchestrator.on_progress = _show_progress
     try:
         if args.command == "run":
             code = _reply_exit(runtime.orchestrator.handle(" ".join(args.text)))
