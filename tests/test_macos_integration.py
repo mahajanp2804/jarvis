@@ -124,3 +124,64 @@ def test_gui_service_closes_open_dialog_on_sigterm() -> None:
         finally:
             if proc.poll() is None:
                 proc.kill()
+
+
+@pytest.mark.integration
+def test_real_ocr_on_a_generated_image(tmp_path: Path) -> None:
+    """Apple Vision reads text from an image drawn here (no screen involved)."""
+    pytest.importorskip("Vision")
+    from AppKit import (
+        NSBitmapImageRep,
+        NSColor,
+        NSDeviceRGBColorSpace,
+        NSFont,
+        NSFontAttributeName,
+        NSForegroundColorAttributeName,
+        NSGraphicsContext,
+        NSPNGFileType,
+        NSRectFill,
+        NSString,
+    )
+    from Foundation import NSMakeRect
+
+    from jarvis.platforms.macos import MacOSPlatform
+
+    width, height = 800, 200
+    rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(  # noqa: E501
+        None, width, height, 8, 4, True, False, NSDeviceRGBColorSpace, 0, 0
+    )
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.setCurrentContext_(NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep))
+    NSColor.whiteColor().set()
+    NSRectFill(NSMakeRect(0, 0, width, height))
+    attrs = {NSFontAttributeName: NSFont.systemFontOfSize_(36),
+             NSForegroundColorAttributeName: NSColor.blackColor()}  # fmt: skip
+    expected = ["Server running on port 8501", "Found 12 errors in 3 files"]
+    for text, y in zip(expected, (120, 40), strict=True):
+        NSString.stringWithString_(text).drawAtPoint_withAttributes_((20, y), attrs)
+    NSGraphicsContext.restoreGraphicsState()
+    image = tmp_path / "text.png"
+    rep.representationUsingType_properties_(NSPNGFileType, None).writeToFile_atomically_(
+        str(image), True
+    )
+
+    lines = MacOSPlatform().recognize_text(image)
+    assert [line.text for line in lines] == expected
+    assert all(line.confidence > 0.5 for line in lines)
+
+
+@pytest.mark.gui
+@pytest.mark.skipif(
+    os.environ.get("JARVIS_RUN_GUI_TESTS") != "1", reason="set JARVIS_RUN_GUI_TESTS=1 to run"
+)
+def test_real_screen_capture_writes_a_png(tmp_path: Path) -> None:
+    """Captures the real screen into a temp folder; the content is never inspected."""
+    from jarvis.platforms.macos import MacOSPlatform
+
+    platform = MacOSPlatform()
+    if platform.screen_capture_allowed() is False:
+        pytest.skip("Screen Recording permission not granted")
+    dest = tmp_path / "screen.png"
+    platform.capture_screen(dest)
+    assert dest.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    dest.unlink()

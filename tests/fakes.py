@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from jarvis.ai.base import ChatMessage, Completion, LLMBackend
-from jarvis.platforms.base import AppControlAdapter, AppInfo, DiagnosticCheck, PlatformAdapter
+from jarvis.platforms.base import (
+    AppControlAdapter,
+    AppInfo,
+    DiagnosticCheck,
+    PlatformAdapter,
+    TextLine,
+)
 
 
 def make_app(name: str, bundle_id: str | None = None, *alt: str) -> AppInfo:
@@ -84,6 +90,7 @@ class FakePlatform(PlatformAdapter):
         self.opened: list[tuple[Path, str | None]] = []
         self.trash: list[Path] = []
         self.index: list[Path] | None = None  # None = no search index (folder scan)
+        self.captures = []
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -92,6 +99,27 @@ class FakePlatform(PlatformAdapter):
 
     def open_path(self, path: Path, app: AppInfo | None = None) -> None:
         self.opened.append((path, app.name if app else None))
+
+    screen_allowed: bool = True
+    screen_text: tuple[str, ...] = ("Build passed", "3 warnings")
+    captures: list[Path]
+
+    def screen_capture_allowed(self) -> bool | None:
+        return self.screen_allowed
+
+    def capture_screen(self, dest: Path) -> None:
+        from jarvis.errors import OSPermissionError
+
+        if not self.screen_allowed:
+            raise OSPermissionError(
+                "macOS doesn't allow Jarvis to capture the screen.", hint="grant it"
+            )
+        self.captures.append(dest)
+        dest.write_bytes(b"\x89PNG fake")
+
+    def recognize_text(self, image: Path) -> list[TextLine]:
+        assert image.exists(), "OCR must run before the capture is deleted"
+        return [TextLine(t, 0.99, 0.1, 0.1 * i, 0.5, 0.05) for i, t in enumerate(self.screen_text)]
 
     def open_terminal(self, folder: Path) -> None:
         self.opened.append((folder, "Terminal"))

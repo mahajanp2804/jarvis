@@ -89,6 +89,18 @@ class AppControlAdapter(ABC):
 
 
 @dataclass(frozen=True)
+class TextLine:
+    """One line of recognised text; box is normalised (0-1), origin top-left."""
+
+    text: str
+    confidence: float
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -162,6 +174,20 @@ class PlatformAdapter(ABC):
     def move_to_trash(self, path: Path) -> Path | None:
         """Move to the Trash (recoverable). Returns the new location if known."""
         raise UnsupportedPlatformError(f"Moving to the Trash isn't implemented on {self.name}.")
+
+    # -- screen (Phase 4, opt-in) ------------------------------------------------------
+
+    def screen_capture_allowed(self) -> bool | None:
+        """Whether the OS currently allows screen capture (``None`` = unknown)."""
+        return None
+
+    def capture_screen(self, dest: Path) -> None:
+        """Save a screenshot of the main display to ``dest`` (PNG)."""
+        raise UnsupportedPlatformError(f"Screen capture isn't implemented on {self.name}.")
+
+    def recognize_text(self, image: Path) -> list[TextLine]:
+        """On-device text recognition, lines ordered top to bottom."""
+        raise UnsupportedPlatformError(f"Text recognition isn't implemented on {self.name}.")
 
     # -- background service (Phase 3) -------------------------------------------------
 

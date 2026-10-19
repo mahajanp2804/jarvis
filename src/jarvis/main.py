@@ -39,7 +39,7 @@ from jarvis.errors import JarvisError
 from jarvis.logging_setup import configure_logging
 from jarvis.platforms import get_platform
 from jarvis.platforms.base import DiagnosticCheck
-from jarvis.runtime.permissions import InteractiveConfirmer
+from jarvis.runtime.permissions import InteractiveConfirmer, PolicyEngine
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -272,6 +272,15 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
     else:
         checks.append(DiagnosticCheck("Platform adapter", True, platform.name))
         checks.extend(platform.diagnostics())
+        if PolicyEngine(config.policy).is_enabled("screen.read_text"):
+            allowed = platform.screen_capture_allowed()
+            detail = {
+                True: "allowed",
+                False: "not allowed (System Settings > Privacy & Security > "
+                "Screen & System Audio Recording)",
+                None: "unknown",
+            }[allowed]
+            checks.append(DiagnosticCheck("Screen Recording", allowed, detail))
         try:
             search = config.applications.search_paths or platform.apps.default_search_paths()
             count = len(platform.apps.discover(search))

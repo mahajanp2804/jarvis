@@ -27,7 +27,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from jarvis.errors import ToolExecutionError, UnsupportedPlatformError
+from jarvis.errors import OSPermissionError, ToolExecutionError, UnsupportedPlatformError
 from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
@@ -35,6 +35,7 @@ from jarvis.platforms.base import (
     PlatformAdapter,
     ProcessStats,
     ServiceManager,
+    TextLine,
 )
 
 if TYPE_CHECKING:
@@ -45,6 +46,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 OPEN_BIN = "/usr/bin/open"
+SCREENCAPTURE_BIN = "/usr/sbin/screencapture"
+SCREEN_PERMISSION_HINT = (
+    "Allow Screen Recording for the app running Jarvis (Terminal for `jarvis run`, Python "
+    "for the background service) in System Settings > Privacy & Security > "
+    "Screen & System Audio Recording, then restart Jarvis."
+)
 MDFIND_BIN = "/usr/bin/mdfind"
 SYSCTL_BIN = "/usr/sbin/sysctl"
 _SUBPROCESS_TIMEOUT = 15.0
@@ -375,6 +382,70 @@ class MacOSPlatform(PlatformAdapter):
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
             raise ToolExecutionError(f"macOS could not open {path.name}: {detail}")
+
+    def screen_capture_allowed(self) -> bool | None:
+        try:
+            import Quartz
+        except ImportError:
+            return None
+        # Preflight only checks; it never shows the permission prompt.
+        return bool(Quartz.CGPreflightScreenCaptureAccess())
+
+    def capture_screen(self, dest: Path) -> None:
+        if self.screen_capture_allowed() is False:
+            raise OSPermissionError(
+                "macOS doesn't allow Jarvis to capture the screen.", hint=SCREEN_PERMISSION_HINT
+            )
+        argv = [SCREENCAPTURE_BIN, "-x", "-m", "-t", "png", str(dest)]  # -x: no sound
+        try:
+            proc = self._run(argv, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ToolExecutionError(f"Screen capture failed: {exc}") from exc
+        detail = (proc.stderr or proc.stdout).strip()
+        if proc.returncode != 0 or not dest.is_file() or dest.stat().st_size == 0:
+            if "could not create image" in detail or not detail:
+                raise OSPermissionError(
+                    "macOS blocked the screen capture.", hint=SCREEN_PERMISSION_HINT
+                )
+            raise ToolExecutionError(f"Screen capture failed: {detail}")
+
+    def recognize_text(self, image: Path) -> list[TextLine]:
+        try:
+            import Vision
+            from Foundation import NSURL
+        except ImportError as exc:
+            raise UnsupportedPlatformError(
+                "Text recognition needs Apple's Vision framework bindings.",
+                hint='In the Jarvis virtualenv run: pip install -e ".[screen]"',
+            ) from exc
+        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
+            NSURL.fileURLWithPath_(str(image)), None
+        )
+        request = Vision.VNRecognizeTextRequest.alloc().init()
+        request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+        request.setUsesLanguageCorrection_(True)
+        ok, error = handler.performRequests_error_([request], None)
+        if not ok:
+            reason = error.localizedDescription() if error is not None else "unknown error"
+            raise ToolExecutionError(f"Text recognition failed: {reason}")
+        lines: list[TextLine] = []
+        for observation in request.results() or []:
+            candidates = observation.topCandidates_(1)
+            if not candidates:
+                continue
+            box = observation.boundingBox()  # normalised, origin bottom-left
+            lines.append(
+                TextLine(
+                    text=str(candidates[0].string()),
+                    confidence=float(candidates[0].confidence()),
+                    x=float(box.origin.x),
+                    y=float(1.0 - box.origin.y - box.size.height),
+                    width=float(box.size.width),
+                    height=float(box.size.height),
+                )
+            )
+        lines.sort(key=lambda line: (round(line.y, 2), line.x))
+        return lines
 
     def open_terminal(self, folder: Path) -> None:
         self.open_path(

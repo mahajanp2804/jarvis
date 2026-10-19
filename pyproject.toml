@@ -81,7 +81,7 @@ packages = ["jarvis"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["AppKit", "Foundation", "PyObjCTools", "PyObjCTools.*"]
+module = ["AppKit", "Foundation", "PyObjCTools", "PyObjCTools.*", "Quartz", "Vision"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

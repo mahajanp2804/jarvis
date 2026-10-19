@@ -27,6 +27,7 @@ from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_availa
 from jarvis.tools.files import FileTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
+from jarvis.tools.screen import ScreenTools
 from jarvis.tools.terminal import ProcessManager, TerminalTools
 
 
@@ -128,6 +129,7 @@ def build_runtime(
         *file_tools.specs(),
         *project_tools.specs(),
         *terminal_tools.specs(),
+        *ScreenTools(platform, paths).specs(),  # opt-in via policy.enabled_tools
     ]
     browser: BrowserSession | None = None
     if playwright_available():  # optional extra: no browser tools without it
