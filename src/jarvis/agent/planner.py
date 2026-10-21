@@ -120,6 +120,36 @@ def build_plan_model(specs: Sequence[ToolSpec], max_steps: int) -> type[BaseMode
     )
 
 
+# llama.cpp turns a string maxLength into one grammar rule per character, so big
+# limits (files.create content: 100,000) produce megabyte grammars that crash it.
+GRAMMAR_MAX_LENGTH = 200
+
+
+# llama.cpp turns a string maxLength into one grammar rule per character, so big
+# limits (files.create content: 100,000) produce megabyte grammars that crash it.
+GRAMMAR_MAX_LENGTH = 200
+
+
+def grammar_schema(schema: Any) -> Any:
+    """The plan schema reduced to what llama.cpp's grammar converter handles safely.
+
+    Removes regex ``pattern`` (escapes like ``\\d`` crash the native parser) and
+    string ``maxLength`` above :data:`GRAMMAR_MAX_LENGTH`. Both are still enforced
+    afterwards by pydantic (a violation gets the normal corrective retry), and
+    generation is bounded by ``max_plan_tokens`` anyway.
+    """
+    if isinstance(schema, dict):
+        return {
+            key: grammar_schema(value)
+            for key, value in schema.items()
+            if key != "pattern"
+            and not (key == "maxLength" and isinstance(value, int) and value > GRAMMAR_MAX_LENGTH)
+        }
+    if isinstance(schema, list):
+        return [grammar_schema(v) for v in schema]
+    return schema
+
+
 def _type_name(prop: dict[str, Any]) -> str:
     if "type" in prop:
         return str(prop["type"])
@@ -290,7 +320,7 @@ class Planner:
         """
         specs = list(self._tools())
         plan_model = build_plan_model(specs, self._settings.max_steps)
-        schema = plan_model.model_json_schema()
+        schema = grammar_schema(plan_model.model_json_schema())
         messages = self._fit(
             [{"role": "system", "content": self.system_prompt(specs)}, *history],
             request,

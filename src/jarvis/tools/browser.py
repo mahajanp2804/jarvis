@@ -342,11 +342,11 @@ class ReadArgs(_Args):
 
 
 class ClickArgs(_Args):
-    ref: str = Field(pattern=r"^e\d{1,3}$", description="element ref from the page, e.g. e3")
+    ref: str = Field(pattern=r"^e[0-9]{1,3}$", description="element ref from the page, e.g. e3")
 
 
 class TypeArgs(_Args):
-    ref: str = Field(pattern=r"^e\d{1,3}$")
+    ref: str = Field(pattern=r"^e[0-9]{1,3}$")
     text: str = Field(max_length=2000)
     submit: bool = Field(default=False, description="press Enter afterwards (submits the form)")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 
 import pytest
@@ -72,6 +73,33 @@ def test_plan_schema_rules(make_runtime: MakeRuntime) -> None:
         )
     with pytest.raises(ValidationError):
         model.model_validate({"action": "execute", "finish": True, "message": "", "steps": [step]})
+
+
+def test_grammar_schema_has_no_regex_patterns(make_runtime: MakeRuntime) -> None:
+    """llama.cpp's grammar parser crashes on some regex escapes (e.g. \\d in browser refs)."""
+    from jarvis.agent.planner import grammar_schema
+
+    runtime, _ = make_runtime(policy={"enabled_tools": ["*"]})
+    full = build_plan_model(list(runtime.registry), max_steps=5).model_json_schema()
+    assert '"pattern"' in json.dumps(full)  # the browser ref pattern exists...
+    assert '"pattern"' not in json.dumps(grammar_schema(full))  # ...but never reaches the grammar
+    llm = FakeLLM()
+    make_planner(list(runtime.registry), llm).plan("hi")
+    assert '"pattern"' not in json.dumps(llm.calls[0][1])
+
+
+def test_grammar_stays_small_with_every_tool_enabled(make_runtime: MakeRuntime) -> None:
+    """Large maxLength values once produced an 816 KB grammar that crashed llama.cpp."""
+    llama_cpp = pytest.importorskip("llama_cpp")
+    from jarvis.agent.planner import grammar_schema
+
+    runtime, _ = make_runtime(policy={"enabled_tools": ["*"]})
+    schema = grammar_schema(build_plan_model(list(runtime.registry), 5).model_json_schema())
+    assert all(
+        v <= 200 for v in re.findall(r'"maxLength": (\d+)', json.dumps(schema)) for v in [int(v)]
+    )
+    grammar = llama_cpp.LlamaGrammar.from_json_schema(json.dumps(schema), verbose=False)
+    assert len(grammar._grammar) < 60_000
 
 
 def test_schema_is_grammar_convertible(make_runtime: MakeRuntime) -> None:

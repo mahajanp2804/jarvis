@@ -16,6 +16,7 @@ import pytest
 
 from jarvis.agent.planner import PlanAction
 from jarvis.ai.model_manager import ModelManager
+from jarvis.api.schemas import ToolStatus
 from jarvis.bootstrap import Runtime, build_backend, build_runtime
 from jarvis.config import JarvisConfig
 from tests.fakes import FakePlatform, ScriptedConfirmer
@@ -73,7 +74,7 @@ def test_search_request_uses_list_tool(runtime: Runtime) -> None:
 
 
 def test_unsupported_request_is_declined(runtime: Runtime) -> None:
-    action, steps = plan_tools(runtime, "please delete everything in my downloads folder")
+    action, steps = plan_tools(runtime, "send an email to my manager saying that I am sick")
     assert action is PlanAction.RESPOND
     assert steps == []
 
@@ -139,3 +140,66 @@ def test_worker_process_returns_memory_and_can_be_aborted() -> None:
         assert time.monotonic() - started < 2
     assert errors and "stopped" in str(errors[0])
     assert not manager.is_loaded
+
+
+# -- multi-step tasks with the real model (temporary home folder, fake apps) -------------
+
+
+@pytest.fixture
+def agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    project = home / "Desktop" / "Code" / "Stock Price Predictor"
+    project.mkdir(parents=True)
+    (home / "Documents").mkdir()
+    (home / "Downloads").mkdir()
+    (project / "requirements.txt").write_text("numpy\n")
+    (project / "app.py").write_text(
+        "import time\nprint('Running on http://127.0.0.1:8778', flush=True)\ntime.sleep(60)\n"
+    )
+    (project / "README.md").write_text("# Stock Price Predictor\nRun with `python3 app.py`.\n")
+    (home / "Desktop" / "todo.txt").write_text("1. renew passport\n2. book dentist\n")
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+@pytest.fixture
+def agent(agent_home: Path, tmp_path: Path) -> Iterator[tuple[Runtime, ScriptedConfirmer]]:
+    import shutil
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    python = shutil.which("python3", path="/opt/homebrew/bin:/usr/bin")
+    assert python
+    (bin_dir / "python3").symlink_to(python)
+    config = JarvisConfig.model_validate(
+        {
+            "general": {"log_dir": str(tmp_path / "logs")},
+            # MODEL was resolved before HOME was redirected to the temporary folder.
+            "ai": {"idle_unload_seconds": 3600, "model_path": str(MODEL)},
+            "terminal": {"search_path": [str(bin_dir)], "startup_seconds": 8},
+        }
+    )
+    confirmer = ScriptedConfirmer(True)
+    runtime = build_runtime(config, FakePlatform(), confirmer, poll_interval=0.01)
+    yield runtime, confirmer
+    runtime.close()
+
+
+def test_open_project_and_run_it(agent: tuple[Runtime, ScriptedConfirmer]) -> None:
+    runtime, _ = agent
+    reply = runtime.orchestrator.handle("open my Stock Price Predictor project and run it")
+    tools = [s.call.tool for s in reply.steps]
+    print(f"\nrounds={reply.rounds} tools={tools}\n{reply.text}")
+    run = [s for s in reply.steps if s.call.tool == "terminal.run"]
+    assert run, f"never ran the project: {tools}"
+    assert run[-1].result.status is ToolStatus.SUCCESS
+    assert run[-1].result.data["url"] == "http://127.0.0.1:8778"
+    assert reply.rounds <= 4
+
+
+def test_read_a_file_and_answer(agent: tuple[Runtime, ScriptedConfirmer]) -> None:
+    runtime, _ = agent
+    reply = runtime.orchestrator.handle("what's on the todo list on my desktop?")
+    print(f"\nrounds={reply.rounds}\n{reply.text}")
+    assert any(s.call.tool == "files.read" for s in reply.steps)
+    assert "passport" in reply.text.lower()
