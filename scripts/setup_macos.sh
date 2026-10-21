@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Create the Jarvis virtual environment on Apple Silicon macOS and install
-# Jarvis in editable mode with development tools and local AI (llama-cpp-python,
+# Jarvis in editable mode with development tools, browser automation (Playwright,
+# drives your installed Chrome), screen OCR (Apple Vision) and local AI (llama-cpp-python,
 # compiled from source with Metal; needs Xcode Command Line Tools, ~1-4 min).
 #
 # Usage: scripts/setup_macos.sh            (picks a suitable Python)
@@ -41,9 +42,9 @@ fi
 [[ -n "${PYTHON}" ]] || die "no arm64 Python >= 3.11 found. Install one with: brew install python@3.14"
 is_suitable "${PYTHON}" || die "${PYTHON} is not an arm64 Python >= 3.11."
 
-EXTRAS="dev,llm"
+EXTRAS="dev,llm,browser,screen"
 if [[ "${JARVIS_SKIP_LLM:-0}" == "1" ]]; then
-    EXTRAS="dev"
+    EXTRAS="dev,browser,screen"
 elif ! xcode-select -p >/dev/null 2>&1; then
     die "Xcode Command Line Tools are needed to build llama-cpp-python. Run: xcode-select --install
        (or set JARVIS_SKIP_LLM=1 to install without local AI)"

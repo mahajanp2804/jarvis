@@ -228,6 +228,32 @@ def _run_shell(runtime: Runtime, cancel: threading.Event) -> int:
             cancel.clear()  # the interrupt only cancels the current request
 
 
+def _browser_check(config: JarvisConfig) -> DiagnosticCheck:
+    from jarvis.tools.browser import (
+        BROWSER_CANDIDATES,
+        EXECUTABLE_CANDIDATES,
+        playwright_available,
+    )
+
+    if not playwright_available():
+        return DiagnosticCheck(
+            "Browser tools", False, 'Playwright missing: pip install -e ".[browser]"'
+        )
+    if config.browser.executable:
+        return DiagnosticCheck("Browser tools", True, f"configured: {config.browser.executable}")
+    for channel, app in BROWSER_CANDIDATES:
+        if app.exists():
+            return DiagnosticCheck("Browser tools", True, f"Playwright + {app.stem} ({channel})")
+    for executable in EXECUTABLE_CANDIDATES:
+        if executable.exists():
+            return DiagnosticCheck("Browser tools", True, f"Playwright + {executable.name}")
+    return DiagnosticCheck(
+        "Browser tools",
+        False,
+        "no Chrome, Edge, Brave or Chromium found (or run `python -m playwright install chromium`)",
+    )
+
+
 def _ai_checks(config: JarvisConfig) -> list[DiagnosticCheck]:
     if not config.ai.enabled:
         return [DiagnosticCheck("Local AI", None, "disabled ([ai] enabled = false)")]
@@ -272,6 +298,8 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
     else:
         checks.append(DiagnosticCheck("Platform adapter", True, platform.name))
         checks.extend(platform.diagnostics())
+        if PolicyEngine(config.policy).is_enabled("browser.open"):
+            checks.append(_browser_check(config))
         if PolicyEngine(config.policy).is_enabled("screen.read_text"):
             allowed = platform.screen_capture_allowed()
             detail = {

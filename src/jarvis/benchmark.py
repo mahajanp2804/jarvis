@@ -30,7 +30,7 @@ from typing import Any
 from jarvis.agent.orchestrator import Orchestrator
 from jarvis.agent.planner import Planner
 from jarvis.ai.model_manager import ModelManager
-from jarvis.platforms.base import ProcessStats
+from jarvis.platforms.base import PlatformAdapter, ProcessStats
 
 DEFAULT_PROMPTS = [
     "open my web browser and the notes app",
@@ -121,6 +121,19 @@ def _round(value: float | None, digits: int = 1) -> float | None:
     return None if value is None else round(value, digits)
 
 
+def combined_stats(platform: PlatformAdapter, pids: Sequence[int | None]) -> ProcessStats | None:
+    """Sum of several processes' stats (``None`` = this process), e.g. Jarvis + model worker."""
+    samples = [s for s in (platform.process_stats(pid) for pid in pids) if s is not None]
+    if not samples:
+        return None
+    return ProcessStats(
+        rss_bytes=sum(s.rss_bytes for s in samples),
+        footprint_bytes=sum(s.footprint_bytes or 0 for s in samples),
+        wakeups=sum(s.wakeups or 0 for s in samples),
+        cpu_seconds=sum(s.cpu_seconds or 0.0 for s in samples),
+    )
+
+
 def _idle(
     seconds: float,
     stats: Callable[[], ProcessStats | None],
@@ -146,7 +159,8 @@ def _timed(
 ) -> TimedStep:
     t0, c0 = clock(), cpu_clock()
     action()
-    return TimedStep(round(clock() - t0, 3), round(cpu_clock() - c0, 3), Snapshot.take(stats))
+    cpu = max(0.0, cpu_clock() - c0)  # unloading removes the worker's CPU from the total
+    return TimedStep(round(clock() - t0, 3), round(cpu, 3), Snapshot.take(stats))
 
 
 def run_benchmark(
@@ -164,6 +178,18 @@ def run_benchmark(
     sleep: Callable[[float], None] = time.sleep,
 ) -> BenchmarkReport:
     """Run the benchmark. ``orchestrator`` must be built in dry-run mode."""
+    process_clock = cpu_clock
+
+    def combined_cpu() -> float:
+        # Prefer the OS's CPU time for Jarvis *and* its model worker process;
+        # time.process_time() only covers this process.
+        sample = stats()
+        if sample is not None and sample.cpu_seconds is not None:
+            return sample.cpu_seconds
+        return process_clock()
+
+    cpu_clock = combined_cpu
+
     models.unload()
 
     progress("rule-based fast path")

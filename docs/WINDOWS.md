@@ -50,11 +50,21 @@ The headless mode (`jarvis daemon --headless`) uses only the portable
 relies on POSIX `set_wakeup_fd` semantics, and Windows needs the console
 control handler above instead.
 
+### Computer automation (Phase 4 interfaces)
+
+| Interface | macOS (implemented) | Windows (plan) |
+|---|---|---|
+| `find_by_name` | Spotlight (`mdfind`) | Windows Search (`SystemIndex` via OLE DB/ADO) or a time-limited scan (the shared fallback already exists) |
+| `move_to_trash` | `NSFileManager.trashItemAtURL` | `SHFileOperationW` / `IFileOperation` with `FOF_ALLOWUNDO` (Recycle Bin) |
+| `open_path` / `open_terminal` | `/usr/bin/open` | `ShellExecuteW`; Windows Terminal (`wt.exe -d <folder>`) |
+| Path sandbox defaults | `~/Library` blocked | Block `%APPDATA%`, `%LOCALAPPDATA%`, `C:\Windows`; case-insensitive comparisons |
+| Terminal tools | POSIX process groups, `killpg` | `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT`, then `TerminateProcess`; `.exe`/`.cmd` resolution; venv in `Scripts\` |
+| `capture_screen` / `recognize_text` | `screencapture` + Apple Vision | `Windows.Graphics.Capture` + `Windows.Media.Ocr` (on-device) |
+| Browser tools | Playwright with installed Chrome/Edge | Same code; Edge is preinstalled (`channel="msedge"`) |
+
 ### Later phases
 * **Speech (Phase 5):** Windows SAPI / `Windows.Media.SpeechSynthesis` for output.
   The local speech-to-text engine chosen in Phase 5 for input.
-* **Browser automation (Phase 4):** Playwright is cross-platform and needs no
-  adapter beyond browser paths.
 * **Accessibility (Phase 4+):** UI Automation (UIA) instead of the macOS AX API.
 
 ## Definition of done for Windows

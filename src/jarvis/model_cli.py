@@ -19,7 +19,7 @@ from jarvis.ai.model_files import (
     missing_model_hint,
 )
 from jarvis.ai.registry import DEFAULT_MODEL, spec_for_filename
-from jarvis.benchmark import render, run_benchmark
+from jarvis.benchmark import combined_stats, render, run_benchmark
 from jarvis.bootstrap import build_runtime
 from jarvis.config import JarvisConfig
 from jarvis.errors import JarvisError
@@ -191,12 +191,13 @@ def benchmark(
     runtime = build_runtime(bench_config, platform, DenyAllConfirmer())
     if runtime.models is None or runtime.planner is None:  # pragma: no cover - enabled above
         return EXIT_ERROR
+    runtime_models = runtime.models
     try:
         report = run_benchmark(
             runtime.models,
             runtime.planner,
             runtime.orchestrator,
-            platform.process_stats,
+            lambda: combined_stats(platform, [None, *runtime_models.backend.process_ids()]),
             repeats=repeats,
             idle_seconds=idle_seconds,
             progress=lambda msg: print(f"… {msg}", file=sys.stderr, flush=True),

@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from jarvis.benchmark import combined_stats
 from jarvis.config import JarvisConfig
 from jarvis.errors import JarvisError
 from jarvis.logging_setup import configure_logging
@@ -138,15 +139,7 @@ def _wait_and_report(config: JarvisConfig, platform: PlatformAdapter, timeout: f
 
 
 def _combined_stats(platform: PlatformAdapter, pids: Sequence[int]) -> ProcessStats | None:
-    samples = [s for s in (platform.process_stats(pid) for pid in pids) if s is not None]
-    if not samples:
-        return None
-    return ProcessStats(
-        rss_bytes=sum(s.rss_bytes for s in samples),
-        footprint_bytes=sum(s.footprint_bytes or 0 for s in samples),
-        wakeups=sum(s.wakeups or 0 for s in samples),
-        cpu_seconds=sum(s.cpu_seconds or 0.0 for s in samples),
-    )
+    return combined_stats(platform, pids)
 
 
 def _duration(seconds: float) -> str:
