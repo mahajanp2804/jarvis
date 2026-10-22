@@ -14,6 +14,7 @@ from jarvis.agent.planner import Planner, PlannerSettings
 from jarvis.ai.base import LLMBackend
 from jarvis.ai.llama_cpp_backend import LlamaCppBackend
 from jarvis.ai.model_manager import ModelManager
+from jarvis.ai.prompt_cache import PromptCache
 from jarvis.ai.subprocess_backend import SubprocessBackend
 from jarvis.api.dispatcher import Dispatcher, RetryPolicy
 from jarvis.config import AIConfig, JarvisConfig
@@ -75,6 +76,10 @@ def build_backend(ai: AIConfig) -> LLMBackend:
                 "threads": ai.threads,
                 "chat_format": ai.chat_format,
                 "metal_residency_sets": ai.metal_residency_sets,
+                "prompt_cache_dir": (
+                    str(ai.resolved_prompt_cache_dir()) if ai.prompt_cache else None
+                ),
+                "prompt_cache_max_mb": ai.prompt_cache_max_mb,
             }
         )
     return LlamaCppBackend(
@@ -84,6 +89,11 @@ def build_backend(ai: AIConfig) -> LLMBackend:
         threads=ai.threads,
         chat_format=ai.chat_format,
         metal_residency_sets=ai.metal_residency_sets,
+        prompt_cache=(
+            PromptCache(ai.resolved_prompt_cache_dir(), ai.prompt_cache_max_mb << 20)
+            if ai.prompt_cache
+            else None
+        ),
     )
 
 

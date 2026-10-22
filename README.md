@@ -193,6 +193,10 @@ Commands are split into arguments and run directly, so pipes, redirection,
 * **Model in a worker process** (`[ai] isolation = "subprocess"`). Unloading
   returns all model memory to the OS. Shutdown can kill a generation mid-way, and
   a llama.cpp crash (like the grammar one above) can't take the service down.
+* **System prompt state saved to disk, not kept in memory.** A fresh worker
+  restores the KV state of the ~1,750-token instructions from a file instead of
+  re-reading them, so unloading after 300 s idle no longer makes the next request
+  slow. See "Prompt cache on disk" below.
 * **Shortcut via `RegisterEventHotKey`, not a keyboard monitor.** No
   Accessibility or Input Monitoring permission, and Jarvis never sees other
   keystrokes.
@@ -269,11 +273,11 @@ Key settings:
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
 | `[agent]` | `max_rounds` (6), `max_tool_retries` (2), `retry_backoff_seconds`, `max_observation_chars` (1500), `history_ttl_seconds` (600) |
-| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true) |
+| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (512) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
 
-Files: config, models and the browser profile in
-`~/Library/Application Support/Jarvis/`; logs (`jarvis.log`, `audit.jsonl`,
+Files: config, models, the saved prompt state (`prompt-cache/`) and the browser
+profile in `~/Library/Application Support/Jarvis/`; logs (`jarvis.log`, `audit.jsonl`,
 `service.log`), background-process output and organize undo lists in
 `~/Library/Logs/Jarvis/`; the agent in
 `~/Library/LaunchAgents/local.jarvis.assistant.plist`.
@@ -297,9 +301,10 @@ context 4096, Metal, model in the worker process. Reproduce with
 | | Time |
 |---|---|
 | Rule-based command ("open calculator" via the shortcut) | 115 ms to a verified launch |
-| First AI request after a load (builds the prompt cache) | ~8 s (5.6 s reading the prompt + generation) |
-| Later AI requests (prompt cached) | 1.5–1.7 s per planning round, ~29 tokens/s |
-| Multi-step tasks, e.g. "open my project and run it" (3 rounds, cold model) | ~12–16 s end to end |
+| First AI request after a model load, prompt state on disk (the usual case) | ~2.4 s (0.07 s restoring the prompt, then generation); was 7.6 s |
+| First AI request with a new system prompt (first run, or after the tools, app list or settings change) | ~7.8 s (5.4 s reading the prompt + generation + 0.2 s saving it) |
+| Later AI requests (prompt in memory) | 1.4–1.6 s per planning round, ~29 tokens/s |
+| Multi-step tasks, e.g. "open my project and run it" (3 rounds, cold model) | ~12–16 s end to end, measured before the prompt cache (which removes the ~5.4 s prompt read from the first round) |
 | Model load / unload (worker) | 0.4–0.5 s / 0.07 s |
 | Graceful stop / restart of the service | 0.4 s / 0.7 s |
 
@@ -307,12 +312,48 @@ context 4096, Metal, model in the worker process. Reproduce with
 
 * Idle, the service costs practically nothing.
 * While loaded, the model holds ~0.7 GB of memory but almost no CPU.
-* The 300 s idle timeout keeps follow-up requests fast and returns all the
-  memory after five quiet minutes.
-* The cost of the larger tool set is the cold request: the system prompt doubled
-  from Phase 2, and so did the first-request time.
-* Next performance step: persist llama.cpp's prompt cache to disk, so a reloaded
-  model can skip re-reading the instructions. Not measured yet.
+* The 300 s idle timeout returns all the memory after five quiet minutes. With
+  the prompt state on disk, the request after an unload costs ~0.5 s more than
+  one with the model still loaded (worker start + restore), not ~6 s.
+* The full prompt read (~5.4 s) now happens once per system prompt, not once per
+  model load.
+
+**Prompt cache on disk** (`[ai] prompt_cache`, on by default). A model load
+starts with an empty KV cache, so without this every load re-read the
+1,749-token system prompt. Now the first request that reads it saves the
+llama.cpp state of the system prompt (never the request) to
+`~/Library/Application Support/Jarvis/prompt-cache/`, and later loads restore it.
+`jarvis benchmark` measures both in one run (it uses an empty temporary cache
+directory, so it always starts cold):
+
+| `jarvis benchmark` | Before (d753ff5) | `prompt_cache = false` | `prompt_cache = true` |
+|---|---|---|---|
+| First request after reload | 7.55 s | 7.68 s | **2.41 s** (restore 0.07 s) |
+| First request after first load | 7.65 s | 7.63 s | 7.82 s (incl. 0.20 s save) |
+| The other 7 requests (prompt in memory) | 1.44–2.28 s | 1.44–2.27 s | 1.43–2.27 s |
+| Footprint (service + worker) after the first request after reload | n/a | 904 MB | 886 MB |
+| Disk | 0 | 0 | 246 MB (1 file) |
+
+The 2.41 s is the benchmark's 48-token reply: the same request with the prompt
+already in memory takes 2.27 s. Shorter replies are faster (1.4–1.6 s).
+
+* **Keyed and invalidated** by a hash of the system prompt (so the enabled
+  tools and the installed-app list are part of it), the model file (name, size,
+  modification time), the context length, the chat format and the
+  llama-cpp-python version. A change means one full read (~7.8 s) and a new file.
+* **Capped** at `prompt_cache_max_mb` (512 MB: the current prompt and one
+  earlier version); least recently used files are deleted first.
+* **Safe to delete** at any time; it's rebuilt on the next request. `jarvis model info`
+  shows its size.
+* **Checked:** files are written to a temporary name and renamed, and carry a
+  CRC32 (23 ms to verify). llama.cpp rejects truncated or garbage files by itself,
+  but silently loads flipped bytes. An unreadable file is deleted and the prompt
+  is read in full instead.
+* **Rejected alternative:** llama-cpp-python's built-in
+  `Llama.set_cache(LlamaDiskCache(...))`. In a prototype it saved ~550 MB (KV
+  plus a 311 MB logits array) after *every* request, adding 0.4–0.7 s to each
+  one; the worker grew to 3.9–4.2 GB; and the first request after a restart
+  still took 2.8 s.
 
 **Battery:** not measured directly. Proxies are CPU time and wakeups (the basis
 of macOS Energy Impact). A planning round uses ~0.4–0.8 CPU-seconds with Metal.
@@ -338,9 +379,10 @@ Playwright 1.63.0 with Chrome 155, PyObjC 12.2.2 on macOS 27.0.1.
 ## Testing
 
 ```bash
-pytest                                       # 528 tests, ~10 s: unit, fake platform, real processes,
+pytest                                       # 552 tests, ~10 s: unit, fake platform, real processes,
                                              #   headless Chrome on a local site, Vision OCR (no model)
-JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real model incl. find→inspect→run a project (~40 s)
+JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real model incl. find→inspect→run a project and
+                                             #   the prompt cache across reloads (~60 s)
 JARVIS_RUN_GUI_TESTS=1 pytest -m gui         # Calculator, service dialog + SIGTERM, real screen capture
 ruff check src tests && ruff format --check src tests
 mypy                                         # strict mode
@@ -393,8 +435,8 @@ SHA-256.
 * **Phase 5:** Optional push-to-talk input, spoken replies, SQLite memory
   (preferences, task history, reusable workflows) with inspect/export/clear
   controls.
-* **Phase 6:** Windows adapters ([`docs/WINDOWS.md`](docs/WINDOWS.md)), a
-  persistent prompt cache for faster cold requests, optional menu-bar UI.
+* **Phase 6:** Windows adapters ([`docs/WINDOWS.md`](docs/WINDOWS.md)),
+  optional menu-bar UI.
   Packaging as an `.app` stays optional: Jarvis keeps working without
   installing an app.
 

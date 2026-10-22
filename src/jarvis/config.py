@@ -27,7 +27,12 @@ from pydantic import (
 from jarvis.ai.registry import DEFAULT_MODEL
 from jarvis.api.schemas import RiskLevel
 from jarvis.errors import ConfigError
-from jarvis.paths import default_config_file, default_log_dir, default_models_dir
+from jarvis.paths import (
+    default_config_file,
+    default_log_dir,
+    default_models_dir,
+    default_prompt_cache_dir,
+)
 
 CONFIG_ENV_VAR = "JARVIS_CONFIG"
 
@@ -157,8 +162,17 @@ class AIConfig(_Section):
     # Give the model the names of installed apps so it can map "my browser" to an
     # app. Names never leave the machine.
     include_app_names: bool = True
+    # Save llama.cpp's state for the system prompt to disk, so the first request
+    # after a model load doesn't re-read it. Measured on an M4: 7.7 s -> 2.4 s
+    # for that request (5.3 s of prompt reading skipped); ~250 MB of disk per
+    # saved prompt, no extra memory. See README "Prompt cache on disk".
+    prompt_cache: bool = True
+    # Disk cap; least recently used prompts are deleted beyond it.
+    prompt_cache_max_mb: int = Field(default=512, ge=1, le=65536)
+    # Unset = ~/Library/Application Support/Jarvis/prompt-cache on macOS.
+    prompt_cache_dir: Path | None = None
 
-    @field_validator("model_path")
+    @field_validator("model_path", "prompt_cache_dir")
     @classmethod
     def _expand(cls, value: Path | None) -> Path | None:
         return value.expanduser() if value is not None else None
@@ -166,6 +180,9 @@ class AIConfig(_Section):
     def resolved_model_path(self) -> Path:
         """The configured model file, or the default model in the models directory."""
         return self.model_path or default_models_dir() / DEFAULT_MODEL.filename
+
+    def resolved_prompt_cache_dir(self) -> Path:
+        return self.prompt_cache_dir or default_prompt_cache_dir()
 
 
 DEFAULT_PROJECT_ROOTS = (
@@ -369,6 +386,12 @@ idle_unload_seconds = 300.0
 # llama.cpp Metal residency keep-alive: ~250 CPU wakeups/s while loaded; off by default.
 metal_residency_sets = false
 include_app_names = true
+# Save the system prompt's llama.cpp state to disk (~250 MB) so the first request
+# after a model load skips re-reading it (~5 s faster on an M4).
+prompt_cache = true
+prompt_cache_max_mb = 512
+# Uncomment to override the default (~/Library/Application Support/Jarvis/prompt-cache).
+# prompt_cache_dir = "~/Library/Application Support/Jarvis/prompt-cache"
 
 [files]
 # Folders Jarvis may read, and the subset it may change ("~" = your home folder).

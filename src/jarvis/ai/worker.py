@@ -34,12 +34,19 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from jarvis.ai.llama_cpp_backend import LlamaCppBackend
+from jarvis.ai.prompt_cache import PromptCache
 from jarvis.errors import JarvisError
 
 log = logging.getLogger("jarvis.ai.worker")
 
 
 def backend_from_settings(settings: dict[str, Any]) -> LlamaCppBackend:
+    cache_dir = settings.get("prompt_cache_dir")
+    prompt_cache = (
+        PromptCache(Path(cache_dir), int(settings.get("prompt_cache_max_mb", 512)) << 20)
+        if cache_dir
+        else None
+    )
     return LlamaCppBackend(
         Path(settings["model_path"]),
         context_length=int(settings.get("context_length", 4096)),
@@ -47,6 +54,7 @@ def backend_from_settings(settings: dict[str, Any]) -> LlamaCppBackend:
         threads=settings.get("threads"),
         chat_format=settings.get("chat_format"),
         metal_residency_sets=bool(settings.get("metal_residency_sets", False)),
+        prompt_cache=prompt_cache,
     )
 
 

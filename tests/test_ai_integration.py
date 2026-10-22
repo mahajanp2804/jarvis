@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from jarvis.agent.planner import PlanAction
+from jarvis.agent.planner import Plan, PlanAction
 from jarvis.ai.model_manager import ModelManager
 from jarvis.api.schemas import ToolStatus
 from jarvis.bootstrap import Runtime, build_backend, build_runtime
@@ -44,7 +44,10 @@ def runtime(tmp_path_factory: pytest.TempPathFactory, platform: FakePlatform) ->
         {
             "general": {"log_dir": str(tmp_path_factory.mktemp("logs"))},
             "applications": {"launch_timeout_seconds": 0.3, "quit_timeout_seconds": 0.3},
-            "ai": {"idle_unload_seconds": 3600},
+            "ai": {
+                "idle_unload_seconds": 3600,
+                "prompt_cache_dir": str(tmp_path_factory.mktemp("prompt-cache")),
+            },
         }
     )
     rt = build_runtime(config, platform, ScriptedConfirmer(True), poll_interval=0.01)
@@ -91,6 +94,68 @@ def test_follow_up_uses_conversation_history(runtime: Runtime, platform: FakePla
     reply = runtime.orchestrator.handle("now quit it")
     assert [r.tool for r in reply.results] == ["apps.quit"]
     assert platform.apps.quit_requests[-1] == "Notes"
+
+
+def test_prompt_cache_survives_a_reload(tmp_path: Path) -> None:
+    """The system prompt's state is saved once, restored after a reload, and plans match."""
+    import zlib
+
+    cache_dir = tmp_path / "prompt-cache"
+
+    def runtime_with(prompt_cache: bool) -> Runtime:
+        config = JarvisConfig.model_validate(
+            {
+                "general": {"log_dir": str(tmp_path / "logs")},
+                "ai": {
+                    "idle_unload_seconds": 3600,
+                    "prompt_cache": prompt_cache,
+                    "prompt_cache_dir": str(cache_dir),
+                },
+            }
+        )
+        return build_runtime(config, FakePlatform(), ScriptedConfirmer(True), poll_interval=0.01)
+
+    def summary(plan: Plan) -> tuple[PlanAction, list[tuple[str, dict[str, object]]]]:
+        return plan.action, [(s.tool, dict(s.arguments)) for s in plan.steps]
+
+    request = "which apps do I have for editing photos?"
+    rt = runtime_with(prompt_cache=True)
+    try:
+        assert rt.planner is not None and rt.models is not None
+        first = rt.planner.plan("open my web browser and the notes app").completions[0]
+        assert first.prompt_cache == "saved" and first.cached_prompt_tokens == 0
+        [entry] = cache_dir.glob("*.llstate")
+        assert 100 * 2**20 < entry.stat().st_size < 400 * 2**20
+
+        rt.models.unload()
+        restored = rt.planner.plan(request)
+        completion = restored.completions[0]
+        assert completion.prompt_cache == "restored"
+        assert completion.cached_prompt_tokens and completion.cached_prompt_tokens > 1000
+        assert completion.prompt_eval_seconds is not None and completion.prompt_eval_seconds < 1
+
+        # A state llama.cpp can't read (checksum intact) is dropped and rebuilt.
+        rt.models.unload()
+        garbage = b"not a llama.cpp state" * 100
+        entry.unlink()
+        (cache_dir / f"{entry.name.split('.')[0]}.{zlib.crc32(garbage):08x}.llstate").write_bytes(
+            garbage
+        )
+        rebuilt = rt.planner.plan(request)
+        assert rebuilt.completions[0].prompt_cache == "saved"
+        assert summary(rebuilt) == summary(restored)
+        assert all(p.stat().st_size > len(garbage) for p in cache_dir.glob("*.llstate"))
+    finally:
+        rt.close()
+
+    cold_rt = runtime_with(prompt_cache=False)
+    try:
+        assert cold_rt.planner is not None
+        cold = cold_rt.planner.plan(request)
+        assert cold.completions[0].prompt_cache is None
+        assert summary(cold) == summary(restored)
+    finally:
+        cold_rt.close()
 
 
 def test_real_backend_unloads_after_idle_timeout(tmp_path: Path) -> None:

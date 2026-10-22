@@ -10,6 +10,10 @@ What is measured (all in this process):
   after a reboot.
 * **Planning requests**: end-to-end latency, prompt/generation split, tokens,
   and how many prompt tokens were reused from llama.cpp's cache.
+* **Prompt cache on disk**: the first request after the first load reads the
+  system prompt in full and saves its state; the first request after the reload
+  restores it. The CLI points the cache at an empty temporary directory, so the
+  run always starts cold and leaves the user's cache alone.
 * **Rule-based fast path** for comparison (no model involved).
 
 Limits, stated honestly: CPU time does not include GPU (Metal) work, and battery
@@ -30,6 +34,7 @@ from typing import Any
 from jarvis.agent.orchestrator import Orchestrator
 from jarvis.agent.planner import Planner
 from jarvis.ai.model_manager import ModelManager
+from jarvis.ai.prompt_cache import PromptCache
 from jarvis.platforms.base import PlatformAdapter, ProcessStats
 
 DEFAULT_PROMPTS = [
@@ -85,6 +90,9 @@ class RequestSample:
     completion_tokens: int
     prompt_eval_seconds: float | None
     generation_seconds: float | None
+    prompt_cache: str | None = None  # "saved" / "restored" (disk), else None
+    prompt_cache_seconds: float | None = None
+    memory_after: Snapshot | None = None
 
     @property
     def generation_tokens_per_second(self) -> float | None:
@@ -104,8 +112,11 @@ class BenchmarkReport:
     unload: TimedStep | None = None
     reload: TimedStep | None = None
     # First request after a reload: the real latency cost of having unloaded,
-    # since llama.cpp's prompt cache is lost with the model.
+    # since llama.cpp's in-memory prompt cache is lost with the model.
     after_reload: RequestSample | None = None
+    # On-disk prompt cache after the run (None = disabled).
+    prompt_cache_files: int | None = None
+    prompt_cache_disk_mb: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -173,11 +184,16 @@ def run_benchmark(
     repeats: int = 2,
     idle_seconds: float = 10.0,
     progress: Callable[[str], None] = lambda _msg: None,
+    prompt_cache_dir: Path | None = None,
     clock: Callable[[], float] = time.monotonic,
     cpu_clock: Callable[[], float] = time.process_time,
     sleep: Callable[[float], None] = time.sleep,
 ) -> BenchmarkReport:
-    """Run the benchmark. ``orchestrator`` must be built in dry-run mode."""
+    """Run the benchmark. ``orchestrator`` must be built in dry-run mode.
+
+    ``prompt_cache_dir`` is the backend's on-disk prompt cache, for reporting
+    its size (``None`` = disabled).
+    """
     process_clock = cpu_clock
 
     def combined_cpu() -> float:
@@ -235,6 +251,14 @@ def run_benchmark(
             completion_tokens=sum(x.completion_tokens for x in plan.completions),
             prompt_eval_seconds=_round(last.prompt_eval_seconds, 3),
             generation_seconds=_round(last.generation_seconds, 3),
+            prompt_cache=next((x.prompt_cache for x in plan.completions if x.prompt_cache), None),
+            prompt_cache_seconds=_round(
+                sum(x.prompt_cache_seconds or 0.0 for x in plan.completions)
+                if any(x.prompt_cache for x in plan.completions)
+                else None,
+                3,
+            ),
+            memory_after=Snapshot.take(stats),
         )
 
     for round_no in range(1, repeats + 1):
@@ -250,6 +274,10 @@ def run_benchmark(
         progress("first request after reload")
         report.after_reload = measure(prompts[0])
     models.unload()
+    if prompt_cache_dir is not None:
+        cache = PromptCache(prompt_cache_dir, 0)
+        report.prompt_cache_files = len(cache.entries())
+        report.prompt_cache_disk_mb = round(cache.disk_bytes() / _MB, 1)
     return report
 
 
@@ -260,6 +288,19 @@ def render(report: BenchmarkReport) -> str:
         if s.rss_mb is None:
             return "n/a"
         return f"RSS {s.rss_mb:,.0f} MB, footprint {s.footprint_mb or 0:,.0f} MB"
+
+    def first(r: RequestSample) -> str:
+        if r.prompt_cache == "restored":
+            how = (
+                f"{r.cached_prompt_tokens} prompt tokens restored from disk "
+                f"in {r.prompt_cache_seconds or 0:.2f}s"
+            )
+        elif r.prompt_cache == "saved":
+            how = f"prompt read in full, then saved to disk in {r.prompt_cache_seconds or 0:.2f}s"
+        else:
+            how = "prompt read in full"
+        memory = f"; {mem(r.memory_after)}" if r.memory_after else ""
+        return f"{r.wall_seconds:.2f}s ({how}){memory}"
 
     def idle(label: str, s: IdleSample) -> str:
         wake = f", {s.wakeups_per_second:g} wakeups/s" if s.wakeups_per_second is not None else ""
@@ -276,6 +317,8 @@ def render(report: BenchmarkReport) -> str:
         f"  {'load (first in process)':<28} {report.load.wall_seconds:.2f}s wall, "
         f"{report.load.cpu_seconds:.2f}s CPU; {mem(report.load.memory_after)}",
     ]
+    if report.requests:
+        lines.append(f"  {'first request after load':<28} {first(report.requests[0])}")
     if report.unload:
         lines.append(
             f"  {'unload':<28} {report.unload.wall_seconds:.2f}s; {mem(report.unload.memory_after)}"
@@ -286,9 +329,13 @@ def render(report: BenchmarkReport) -> str:
             f"{report.reload.cpu_seconds:.2f}s CPU"
         )
     if report.after_reload:
+        lines.append(f"  {'first request after reload':<28} {first(report.after_reload)}")
+    if report.prompt_cache_disk_mb is None:
+        lines.append(f"  {'prompt cache on disk':<28} off ([ai] prompt_cache = false)")
+    else:
         lines.append(
-            f"  {'first request after reload':<28} {report.after_reload.wall_seconds:.2f}s "
-            "(prompt cache rebuilt)"
+            f"  {'prompt cache on disk':<28} {report.prompt_cache_disk_mb:,.0f} MB "
+            f"in {report.prompt_cache_files} file(s)"
         )
     lines += ["", f"Rule-based fast path (no model): {report.fast_path_ms:.1f} ms", ""]
     lines.append("Planning requests:")
@@ -298,6 +345,8 @@ def render(report: BenchmarkReport) -> str:
         if r.prompt_eval_seconds is not None and r.generation_seconds is not None:
             split = f" (prompt {r.prompt_eval_seconds:.2f}s + gen {r.generation_seconds:.2f}s)"
         cached = f", {r.cached_prompt_tokens} cached" if r.cached_prompt_tokens is not None else ""
+        if r.prompt_cache:
+            cached += f" ({r.prompt_cache} on disk)"
         lines.append(
             f"  {r.wall_seconds:5.2f}s{split}  {r.prompt_tokens} prompt tok{cached}, "
             f"{r.completion_tokens} gen tok"

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -18,6 +19,7 @@ from jarvis.ai.model_files import (
     download_model,
     missing_model_hint,
 )
+from jarvis.ai.prompt_cache import PromptCache
 from jarvis.ai.registry import DEFAULT_MODEL, spec_for_filename
 from jarvis.benchmark import combined_stats, render, run_benchmark
 from jarvis.bootstrap import build_runtime
@@ -56,11 +58,21 @@ def model_info(config: JarvisConfig) -> int:
         ("Context length", str(ai.context_length)),
         ("GPU layers", "all" if ai.gpu_layers < 0 else str(ai.gpu_layers)),
         ("Idle unload", f"{ai.idle_unload_seconds:g}s"),
+        ("Prompt cache", _prompt_cache_summary(config)),
     ]
     width = max(len(k) for k, _ in rows)
     for key, value in rows:
         print(f"{key:<{width}}  {value}")
     return EXIT_OK
+
+
+def _prompt_cache_summary(config: JarvisConfig) -> str:
+    ai = config.ai
+    if not ai.prompt_cache:
+        return "off"
+    cache = PromptCache(ai.resolved_prompt_cache_dir(), ai.prompt_cache_max_mb << 20)
+    used = cache.disk_bytes() / (1 << 20)
+    return f"{used:,.0f} of {ai.prompt_cache_max_mb:,} MB used, {cache.directory}"
 
 
 def model_check(config: JarvisConfig, *, verify: bool) -> int:
@@ -181,34 +193,41 @@ def benchmark(
 
     # Safety: the benchmark only plans, and its runtime is forced into dry-run with
     # all confirmations denied, so nothing on the system can change. The idle
-    # timer is pushed out so it can't unload the model mid-measurement.
-    bench_config = config.model_copy(
-        update={
-            "general": config.general.model_copy(update={"dry_run": True}),
-            "ai": config.ai.model_copy(update={"idle_unload_seconds": 86400.0}),
-        }
-    )
-    runtime = build_runtime(bench_config, platform, DenyAllConfirmer())
-    if runtime.models is None or runtime.planner is None:  # pragma: no cover - enabled above
-        return EXIT_ERROR
-    runtime_models = runtime.models
-    try:
-        report = run_benchmark(
-            runtime.models,
-            runtime.planner,
-            runtime.orchestrator,
-            lambda: combined_stats(platform, [None, *runtime_models.backend.process_ids()]),
-            repeats=repeats,
-            idle_seconds=idle_seconds,
-            progress=lambda msg: print(f"… {msg}", file=sys.stderr, flush=True),
+    # timer is pushed out so it can't unload the model mid-measurement. The prompt
+    # cache goes to an empty temporary directory: the run starts cold every time
+    # and never evicts the user's saved prompts.
+    with tempfile.TemporaryDirectory(prefix="jarvis-benchmark-") as tmp:
+        cache_dir = Path(tmp) if config.ai.prompt_cache else None
+        bench_config = config.model_copy(
+            update={
+                "general": config.general.model_copy(update={"dry_run": True}),
+                "ai": config.ai.model_copy(
+                    update={"idle_unload_seconds": 86400.0, "prompt_cache_dir": cache_dir}
+                ),
+            }
         )
-    except JarvisError as exc:
-        print(f"Error: {exc.message}", file=sys.stderr)
-        if exc.hint:
-            print(f"  Hint: {exc.hint}", file=sys.stderr)
-        return EXIT_ERROR
-    finally:
-        runtime.close()
+        runtime = build_runtime(bench_config, platform, DenyAllConfirmer())
+        if runtime.models is None or runtime.planner is None:  # pragma: no cover - enabled above
+            return EXIT_ERROR
+        runtime_models = runtime.models
+        try:
+            report = run_benchmark(
+                runtime.models,
+                runtime.planner,
+                runtime.orchestrator,
+                lambda: combined_stats(platform, [None, *runtime_models.backend.process_ids()]),
+                repeats=repeats,
+                idle_seconds=idle_seconds,
+                progress=lambda msg: print(f"… {msg}", file=sys.stderr, flush=True),
+                prompt_cache_dir=cache_dir,
+            )
+        except JarvisError as exc:
+            print(f"Error: {exc.message}", file=sys.stderr)
+            if exc.hint:
+                print(f"  Hint: {exc.hint}", file=sys.stderr)
+            return EXIT_ERROR
+        finally:
+            runtime.close()
     print(render(report))
     if json_path is not None:
         report.write_json(json_path)

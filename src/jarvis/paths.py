@@ -62,3 +62,15 @@ def default_models_dir() -> Path:
         return (Path(base) if base else home / "AppData" / "Local") / APP_NAME / "models"
     base = os.environ.get("XDG_DATA_HOME")
     return (Path(base) if base else home / ".local" / "share") / APP_NAME.lower() / "models"
+
+
+def default_prompt_cache_dir() -> Path:
+    """Directory for saved llama.cpp prompt states (~250 MB each, rebuildable)."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        return config_dir() / "prompt-cache"
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+        return (Path(base) if base else home / "AppData" / "Local") / APP_NAME / "prompt-cache"
+    base = os.environ.get("XDG_CACHE_HOME")
+    return (Path(base) if base else home / ".cache") / APP_NAME.lower() / "prompt-cache"

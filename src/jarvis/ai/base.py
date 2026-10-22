@@ -37,6 +37,10 @@ class Completion:
     prompt_eval_seconds: float | None = None
     generation_seconds: float | None = None
     cached_prompt_tokens: int | None = None
+    # On-disk prompt cache: "restored" (system prompt state loaded from disk) or
+    # "saved" (written for the next load), and the time that took.
+    prompt_cache: str | None = None
+    prompt_cache_seconds: float | None = None
 
 
 class LLMBackend(ABC):
