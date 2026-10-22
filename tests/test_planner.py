@@ -17,9 +17,9 @@ from jarvis.agent.planner import (
     describe_tool,
 )
 from jarvis.ai.model_manager import ModelManager
-from jarvis.api.schemas import ToolCall
+from jarvis.api.schemas import RiskLevel, ToolCall
 from jarvis.bootstrap import Runtime
-from jarvis.tools.base import ToolSpec
+from jarvis.tools.base import PreparedAction, ToolSpec
 from tests.fakes import FakeLLM, ScriptedConfirmer, plan_json
 
 MakeRuntime = Callable[..., tuple[Runtime, ScriptedConfirmer]]
@@ -77,14 +77,25 @@ def test_plan_schema_rules(make_runtime: MakeRuntime) -> None:
 
 def test_grammar_schema_has_no_regex_patterns(make_runtime: MakeRuntime) -> None:
     """llama.cpp's grammar parser crashes on some regex escapes (e.g. \\d in browser refs)."""
+    from pydantic import BaseModel, ConfigDict, Field
+
     from jarvis.agent.planner import grammar_schema
 
+    class RefArgs(BaseModel):  # like browser.click's element ref; browser tools are optional
+        model_config = ConfigDict(extra="forbid")
+        ref: str = Field(pattern=r"^e\d{1,4}$")
+
+    def never_prepared(args: RefArgs) -> PreparedAction:
+        raise AssertionError("planning never prepares a step")
+
     runtime, _ = make_runtime(policy={"enabled_tools": ["*"]})
-    full = build_plan_model(list(runtime.registry), max_steps=5).model_json_schema()
-    assert '"pattern"' in json.dumps(full)  # the browser ref pattern exists...
+    click = ToolSpec("test.click", "Click.", RefArgs, RiskLevel.LOW, never_prepared)
+    specs = [*runtime.registry, click]
+    full = build_plan_model(specs, max_steps=5).model_json_schema()
+    assert '"pattern"' in json.dumps(full)  # the pattern exists...
     assert '"pattern"' not in json.dumps(grammar_schema(full))  # ...but never reaches the grammar
     llm = FakeLLM()
-    make_planner(list(runtime.registry), llm).plan("hi")
+    make_planner(specs, llm).plan("hi")
     assert '"pattern"' not in json.dumps(llm.calls[0][1])
 
 

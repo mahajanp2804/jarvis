@@ -163,6 +163,7 @@ def test_shutdown_aborts_an_in_flight_model_request(short_dir: Path, tmp_path: P
     assert not daemon.paths.socket.exists()
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="needs a platform adapter (macOS only so far)")
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
 def test_daemon_process_exits_cleanly_on_signal(short_dir: Path, signum: int) -> None:
     """Real process: `jarvis daemon --headless`, isolated HOME, then a signal."""
