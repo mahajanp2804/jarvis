@@ -1,4 +1,4 @@
-# Exact versions Jarvis 0.6.0 was tested with: Python 3.14.3 (Homebrew, arm64),
+# Exact versions Jarvis 0.6.1 was tested with: Python 3.14.3 (Homebrew, arm64),
 # macOS 27.0.1, MacBook Air M4. pyproject.toml only sets compatible ranges; use
 # this file to reproduce the tested set:
 #

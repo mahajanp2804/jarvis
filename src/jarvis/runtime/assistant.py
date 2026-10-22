@@ -159,6 +159,7 @@ class Assistant:
         finally:
             self._recording = None
         if not use or self._loop.stopping:
+            log.info("Push-to-talk: recording discarded (Cancel in the Listening dialog)")
             recording.cancel()
             return
         recording.stop()
@@ -222,7 +223,11 @@ class Assistant:
 
         text = self._loop.call_and_wait(edit, default=None)
         if not text or self._loop.stopping:
+            log.info("Push-to-talk: transcript not run (Cancel in the edit dialog)")
             return Reply("Cancelled.", handled=False)
+        log.info(
+            "Push-to-talk: running the transcript (%s)", "edited" if text != heard else "as heard"
+        )
         return self._run(text, interactive=True, source="voice")
 
     def _ask(self, question: str) -> str | None:

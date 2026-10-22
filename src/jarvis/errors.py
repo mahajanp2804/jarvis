@@ -66,6 +66,20 @@ class AmbiguousAppError(JarvisError):
         )
 
 
+class AppNameUnclearError(AmbiguousAppError):
+    """No application has this name, but one or two are near-certain matches.
+
+    Usually a misheard or mistyped name ("photo wood" for Photo Booth). Jarvis
+    asks instead of guessing, and doesn't hand the name to the AI model.
+    """
+
+    def __init__(self, query: str, suggestions: Sequence[str]) -> None:
+        self.query = query
+        self.candidates = list(suggestions)
+        names = " or ".join(self.candidates)
+        JarvisError.__init__(self, f"There's no app called '{query}'. Did you mean {names}?")
+
+
 class OSPermissionError(JarvisError):
     """The operating system blocked the action (e.g. a missing privacy permission)."""
 

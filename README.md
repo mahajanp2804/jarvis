@@ -237,6 +237,14 @@ stays in memory and is never written to disk. In a terminal, `jarvis listen`
 and `jarvis shell --voice` work the same way (Enter stops recording, then
 `[Y]es / [e]dit / [n]o`). `jarvis voice listen` only prints what it heard.
 
+A misheard app name gets a question, not a guess: "open photo wood" answers
+"There's no app called 'photo wood'. Did you mean Photo Booth?" (instantly,
+without the model), and "yes" opens it. That only happens when the match is
+near-certain: the spelling is very close, or the same words with one identical
+and the other sounding alike. Generic phrases such as "web browser" still go to
+the model. The log records how each voice attempt ended (heard, nothing heard,
+cancelled, failed) but never the words.
+
 **Microphone permission.** macOS asks the first time the microphone is used,
 and it asks on behalf of the app that started Jarvis. That's your terminal app
 for `jarvis listen`, and Python for the background service. Python's
@@ -601,7 +609,7 @@ sounddevice 0.5.6 on macOS 27.0.1.
 ## Testing
 
 ```bash
-pytest                                       # 639 tests, ~13 s: unit, fake platform, real processes,
+pytest                                       # 652 tests, ~13 s: unit, fake platform, real processes,
                                              #   headless Chrome on a local site, Vision OCR (no model)
 JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real models: find→inspect→run a project, the prompt
                                              #   cache across reloads, remembered preferences,
@@ -667,6 +675,10 @@ with no platform adapter, evidence that the core is portable).
   `jarvis voice listen` tests it without running anything.
 * **"I didn't hear anything":** nothing louder than the room noise was
   recorded within 8 s. Speak closer, or raise `[voice] max_record_seconds`.
+* **A voice attempt did nothing:** `~/Library/Logs/Jarvis/jarvis.log` has one
+  "Voice worker … ended: …" line per attempt (heard N characters / nothing
+  heard / cancelled / failed: reason) and a "Push-to-talk: …" line for what
+  you chose in the dialogs. The words themselves are never logged.
 * **A configured voice isn't used:** `say` silently falls back to the system
   voice for unknown names; `jarvis doctor` checks the name against
   `jarvis voice voices`.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 import subprocess
 import sys
@@ -46,6 +48,29 @@ def test_stop_ends_recording_and_returns_the_transcript(tmp_path: Path) -> None:
     recording.stop()
     transcript = recording.result(timeout=5)
     assert transcript == Transcript("open safari", 2.0, 0.05, "stop")
+
+
+def test_the_log_says_how_attempts_end_but_never_what_was_said(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="jarvis.voice.listen")
+    recording = fake_voice(tmp_path).start()
+    assert recording.listening.wait(5)
+    recording.stop()
+    recording.result(timeout=5)
+    for scenario in ("nothing", "silent"):
+        with contextlib.suppress(VoiceInputError):
+            fake_voice(tmp_path, scenario).start().result(timeout=5)
+    cancelled = fake_voice(tmp_path).start()
+    assert cancelled.listening.wait(5)
+    cancelled.cancel()
+    assert cancelled.done.wait(5)
+    ended = [r.getMessage() for r in caplog.records if "ended:" in r.getMessage()]
+    assert any("heard 11 characters (2.0 s of audio, stopped: stop)" in m for m in ended)
+    assert any("nothing heard (8.0 s of audio, stopped: no_speech)" in m for m in ended)
+    assert any("failed: The microphone gave only silence." in m for m in ended)
+    assert any(m.endswith("ended: cancelled") for m in ended)
+    assert "open safari" not in caplog.text
 
 
 def test_cancel_discards_the_recording(tmp_path: Path) -> None:
@@ -211,6 +236,23 @@ def test_push_to_talk_runs_the_confirmed_transcript(
     assert ui.heard == ["open safari"]
     assert fake_platform.apps.launched == ["Safari"]
     assert runtime.memory is not None and runtime.memory.history()[0].source == "voice"
+
+
+def test_push_to_talk_logs_decisions_without_the_words(
+    make_runtime: MakeRuntime, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="jarvis.runtime.assistant")
+    for ui in (VoiceUI(), VoiceUI(edited="open notes"), VoiceUI(edited=None), VoiceUI(use=False)):
+        assistant, loop, _ = make(make_runtime, ui, voice=fake_voice(tmp_path))
+        drive(assistant, loop, assistant.push_to_talk)
+    messages = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Push-to-talk")]
+    assert messages == [
+        "Push-to-talk: running the transcript (as heard)",
+        "Push-to-talk: running the transcript (edited)",
+        "Push-to-talk: transcript not run (Cancel in the edit dialog)",
+        "Push-to-talk: recording discarded (Cancel in the Listening dialog)",
+    ]
+    assert "safari" not in caplog.text.lower() and "open notes" not in caplog.text
 
 
 def test_edited_transcript_is_what_runs(

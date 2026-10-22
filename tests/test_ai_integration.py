@@ -273,6 +273,24 @@ def test_open_project_and_run_it(agent: tuple[Runtime, ScriptedConfirmer]) -> No
     assert reply.rounds <= 4
 
 
+def test_several_matching_projects_get_a_question_not_a_guess(
+    agent: tuple[Runtime, ScriptedConfirmer], agent_home: Path
+) -> None:
+    """Spec: "Ask for clarification if multiple projects match." """
+    other = agent_home / "Desktop" / "Code" / "Stock Price Dashboard"
+    other.mkdir()
+    (other / "requirements.txt").write_text("streamlit\n")
+    (other / "app.py").write_text("print('dashboard')\n")
+    runtime, confirmer = agent
+    reply = runtime.orchestrator.handle("open my stock price project and run it")
+    tools = [s.call.tool for s in reply.steps]
+    print(f"\nrounds={reply.rounds} tools={tools}\n{reply.text}")
+    assert reply.plan is not None and reply.plan.action is PlanAction.CLARIFY
+    assert not reply.handled
+    assert "terminal.run" not in tools and confirmer.prompts == []  # nothing ran
+    assert "predictor" in reply.text.lower() and "dashboard" in reply.text.lower()
+
+
 def test_read_a_file_and_answer(agent: tuple[Runtime, ScriptedConfirmer]) -> None:
     runtime, _ = agent
     reply = runtime.orchestrator.handle("what's on the todo list on my desktop?")

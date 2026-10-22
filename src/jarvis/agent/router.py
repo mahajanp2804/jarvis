@@ -21,6 +21,8 @@ _POLITE_PREFIX = re.compile(
     re.IGNORECASE,
 )
 _TRAILING = re.compile(r"(?:\s+(?:please|for me|now))*[\s.!?]*$", re.IGNORECASE)
+# Speech-to-text sometimes joins the verb to its object: "open-calculator."
+_HYPHENATED_VERB = re.compile(r"^(open|launch|quit|close|exit)-(?=\w)", re.IGNORECASE)
 _APP_SUFFIX = re.compile(r"\s+(?:app|application)$", re.IGNORECASE)
 _LEADING_THE = re.compile(r"^the\s+", re.IGNORECASE)
 
@@ -83,6 +85,7 @@ def normalise_command(text: str) -> str:
     """Collapse spaces and strip "hey Jarvis, please" / "for me." from a request."""
     command = " ".join(text.split())
     command = _POLITE_PREFIX.sub("", command)
+    command = _HYPHENATED_VERB.sub(r"\1 ", command)
     return _TRAILING.sub("", command).strip()
 
 

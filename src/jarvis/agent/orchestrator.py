@@ -468,7 +468,7 @@ def _hard_stop(result: ToolResult) -> str | None:
 def format_result(result: ToolResult) -> str:
     """Human-readable one-block summary of a tool result."""
     text = result.message
-    if result.status is ToolStatus.NEEDS_CLARIFICATION:
+    if result.status is ToolStatus.NEEDS_CLARIFICATION and not text.rstrip().endswith("?"):
         text = f"{text}\nWhich one did you mean?"
     if result.hint:
         text = f"{text}\n  Hint: {result.hint}"

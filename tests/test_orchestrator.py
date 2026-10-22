@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from jarvis.api.schemas import ToolStatus
 from jarvis.bootstrap import Runtime
 from tests.fakes import FakeLLM, FakePlatform, ScriptedConfirmer, plan_json
 
@@ -164,6 +165,22 @@ def test_unknown_app_from_fast_path_falls_back_to_the_model(
     reply = runtime.orchestrator.handle("open the browser")
     assert reply.text == "Opened Safari."
     assert fake_platform.apps.launched == ["Safari"]
+
+
+def test_misheard_app_name_is_asked_about_without_the_model(
+    make_runtime: MakeRuntime, fake_llm: FakeLLM, fake_platform: FakePlatform
+) -> None:
+    runtime, _ = make_runtime()
+    reply = runtime.orchestrator.handle("Open photo wood.")  # as transcribed from "Photo Booth"
+    assert reply.text == "There's no app called 'photo wood'. Did you mean Photo Booth?"
+    assert reply.results[0].status is ToolStatus.NEEDS_CLARIFICATION
+    assert fake_llm.calls == [] and fake_platform.apps.launched == []
+    # The answer goes to the model with the question in the conversation.
+    fake_llm.replies.append(
+        plan_json("execute", "Opening.", ("apps.open", {"name": "Photo Booth"}))
+    )
+    assert runtime.orchestrator.handle("yes").text == "Opened Photo Booth."
+    assert "Did you mean Photo Booth?" in str(fake_llm.calls[-1][0])
 
 
 def test_unknown_app_without_ai_reports_not_found(

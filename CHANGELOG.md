@@ -4,6 +4,20 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
+## 0.6.1: Fixes from real voice use (2026-10-23)
+
+- "open-calculator." (a speech-to-text spelling) takes the instant path: a
+  hyphen joining the command verb to the app name is split.
+- A near-certain app name ("photo wood" for Photo Booth, "safarii", "font
+  look") gets "Did you mean …?" instantly instead of going to the model, which
+  had guessed "Photos". Near-certain means a very close spelling, or the same
+  words with one identical and the others spelled or sounding alike (Soundex);
+  generic phrases like "web browser" still go to the model.
+- The log says how each voice attempt ended and what was chosen in the
+  dialogs, never the words.
+- Real-model test for the spec's "ask for clarification if multiple projects
+  match".
+
 ## 0.6.0: Packaging and portfolio (Phase 6, 2026-10-23)
 
 - Single-sourced version (`jarvis.__version__`), project URLs and classifiers

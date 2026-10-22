@@ -141,8 +141,12 @@ def test_declined_quit_exit_code(
 
 
 def test_not_found_exit_code(platform: FakePlatform, capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["apps", "open", "safarii"]) == cli.EXIT_ERROR
-    assert "Did you mean: Safari?" in capsys.readouterr().out
+    assert cli.main(["apps", "open", "notepad"]) == cli.EXIT_ERROR
+    assert "Did you mean: Notes?" in capsys.readouterr().out
+    assert cli.main(["apps", "open", "safarii"]) == cli.EXIT_NOT_DONE  # asks, never guesses
+    out = capsys.readouterr().out
+    assert "Did you mean Safari?" in out and "Which one" not in out
+    assert platform.apps.launched == []
 
 
 def test_audit_log_written(platform: FakePlatform, tmp_path: Path) -> None:

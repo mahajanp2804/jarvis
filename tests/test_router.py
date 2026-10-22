@@ -19,7 +19,10 @@ from jarvis.api.schemas import ToolCall
         ),
         ("hey jarvis can you open   photo booth please!", "apps.open", {"name": "photo booth"}),
         ("open 'Activity Monitor'", "apps.open", {"name": "Activity Monitor"}),
+        ("open-calculator.", "apps.open", {"name": "calculator"}),  # as transcribed
+        ("Hey Jarvis, open Google Chrome.", "apps.open", {"name": "Google Chrome"}),
         ("quit Music", "apps.quit", {"name": "Music"}),
+        ("Quit-Music", "apps.quit", {"name": "Music"}),
         ("close the Calculator application", "apps.quit", {"name": "Calculator"}),
         ("list apps", "apps.list", {}),
         ("show all installed applications", "apps.list", {}),

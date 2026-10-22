@@ -92,9 +92,25 @@ class Recording:
                 self._error = VoiceInputError(
                     f"The voice worker stopped unexpectedly (exit {self._proc.returncode})."
                 )
+            log.info("Voice worker %d ended: %s", self._proc.pid, self.outcome())
             self.listening.set()
             self.recorded.set()
             self.done.set()
+
+    def outcome(self) -> str:
+        """How the attempt ended, for the log. Never includes what was said."""
+        if self._cancelled:
+            return "cancelled"
+        if self._error is not None:
+            return f"failed: {self._error.message}"
+        seconds = float(self._info.get("seconds", 0.0))
+        reason = self._info.get("reason", "?")
+        if not self._text:
+            return f"nothing heard ({seconds:.1f} s of audio, stopped: {reason})"
+        return (
+            f"heard {len(self._text)} characters ({seconds:.1f} s of audio, stopped: {reason}), "
+            f"transcribed in {self._seconds:.2f} s"
+        )
 
     def stop(self) -> None:
         """Stop recording now and transcribe what was said."""

@@ -21,13 +21,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from jarvis.api.schemas import RiskLevel, ToolResult, ToolStatus
 from jarvis.config import ApplicationsConfig
-from jarvis.errors import AmbiguousAppError, AppNotFoundError, PolicyDeniedError
+from jarvis.errors import (
+    AmbiguousAppError,
+    AppNameUnclearError,
+    AppNotFoundError,
+    PolicyDeniedError,
+)
 from jarvis.platforms.base import AppControlAdapter, AppInfo
 from jarvis.runtime.permissions import Decision, PolicyEngine
 from jarvis.tools.base import PreparedAction, ToolSpec
 
 _MIN_PARTIAL_QUERY = 3
 _MAX_CANDIDATES = 8
+# A close name is only offered as "did you mean" when it's near-certain. Measured
+# on 97 installed apps: "photo wood" -> Photo Booth must qualify, while generic
+# words like "web browser" (0.75 against "Brave Browser") must not, since the AI
+# model maps those better. Weaker matches only appear in the error's hint.
+_CONFIDENT_RATIO = 0.8
 
 
 class ListAppsArgs(BaseModel):
@@ -64,6 +74,55 @@ class AppNameArgs(BaseModel):
 def normalise(text: str) -> str:
     """Case-fold and collapse punctuation/spaces: 'Visual-Studio  Code' -> 'visual studio code'."""
     return re.sub(r"[^\w]+", " ", text.casefold()).strip()
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+_SOUNDEX = {
+    c: d for d, letters in enumerate(("bfpv", "cgjkqsxz", "dt", "l", "mn", "r"), 1) for c in letters
+}
+
+
+def _sound_tail(word: str) -> str:
+    """American Soundex without its first letter: how a word sounds after it starts.
+
+    "wood" and "booth" both give "300": misheard first consonants still match.
+    """
+    digits = []
+    previous = _SOUNDEX.get(word[:1])
+    for char in word[1:]:
+        code = _SOUNDEX.get(char)
+        if code is not None and code != previous:
+            digits.append(str(code))
+        if char not in "hw":
+            previous = code
+    return ("".join(digits) + "000")[:3]
+
+
+def _sounds_like(a: str, b: str) -> bool:
+    tail = _sound_tail(a)
+    return len(a) >= 3 and len(b) >= 3 and tail != "000" and tail == _sound_tail(b)
+
+
+def _near_certain(query: str, name: str) -> bool:
+    """A misspelling or mishearing of ``name``, not merely a similar-looking phrase.
+
+    Either the whole name is very close ("safary" / safari), or it has the same
+    words with at least one identical and each other one spelled or sounding
+    nearly the same ("photo wood" / photo booth). Generic phrases such as
+    "web browser" against "Brave Browser" don't qualify.
+    """
+    if _ratio(query, name) >= _CONFIDENT_RATIO:
+        return True
+    words, name_words = query.split(), name.split()
+    if len(words) < 2 or len(words) != len(name_words):
+        return False
+    pairs = list(zip(words, name_words, strict=True))
+    return any(a == b for a, b in pairs) and all(
+        a == b or _ratio(a, b) >= _CONFIDENT_RATIO or _sounds_like(a, b) for a, b in pairs
+    )
 
 
 def _compact(text: str) -> str:
@@ -143,6 +202,9 @@ class AppCatalog:
                 raise AmbiguousAppError(query, _labels(partial)[:_MAX_CANDIDATES])
 
         by_norm = {normalise(n): n for app in apps for n in app.all_names}
+        confident = [by_norm[n] for n in by_norm if _near_certain(q, n)]
+        if 1 <= len(confident) <= 2:
+            raise AppNameUnclearError(query, sorted(confident))
         close = difflib.get_close_matches(q, list(by_norm), n=3, cutoff=0.6)
         raise AppNotFoundError(query, [by_norm[c] for c in close])
 

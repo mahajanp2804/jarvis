@@ -7,7 +7,7 @@ import pytest
 
 from jarvis.api.schemas import ToolCall, ToolStatus
 from jarvis.bootstrap import Runtime
-from jarvis.errors import AmbiguousAppError, AppNotFoundError
+from jarvis.errors import AmbiguousAppError, AppNameUnclearError, AppNotFoundError
 from jarvis.platforms.base import AppInfo
 from jarvis.tools.applications import AppCatalog, normalise
 from tests.fakes import DEFAULT_APPS, FakeAppControl, FakePlatform, ScriptedConfirmer
@@ -78,9 +78,35 @@ def test_duplicate_names_are_disambiguated_by_path() -> None:
 def test_not_found_offers_suggestions_but_never_guesses() -> None:
     cat, _ = catalog()
     with pytest.raises(AppNotFoundError) as info:
-        cat.resolve("safarii")
-    assert info.value.suggestions == ["Safari"]
-    assert info.value.hint and "Safari" in info.value.hint
+        cat.resolve("notepad")  # only loosely like Notes: a hint, never a guess
+    assert info.value.suggestions == ["Notes"]
+    assert info.value.hint and "Notes" in info.value.hint
+
+
+@pytest.mark.parametrize(
+    ("query", "meant"),
+    [
+        ("safarii", "Safari"),  # misspelled
+        ("calculater", "Calculator"),
+        ("photo wood", "Photo Booth"),  # misheard: one word identical, the other sounds alike
+    ],
+)
+def test_near_certain_names_are_asked_about(query: str, meant: str) -> None:
+    cat, _ = catalog()
+    with pytest.raises(AppNameUnclearError) as info:
+        cat.resolve(query)
+    assert info.value.candidates == [meant]
+    assert info.value.message == f"There's no app called '{query}'. Did you mean {meant}?"
+
+
+@pytest.mark.parametrize("query", ["web browser", "photo editor", "music player", "code editor"])
+def test_generic_phrases_are_not_treated_as_misheard(query: str) -> None:
+    from jarvis.tools.applications import _near_certain
+
+    assert not _near_certain(query, "brave browser")
+    assert not _near_certain(query, "photo booth")
+    assert not _near_certain(query, "quicktime player")
+    assert not _near_certain(query, "script editor")
 
 
 def test_short_queries_do_not_partial_match() -> None:
