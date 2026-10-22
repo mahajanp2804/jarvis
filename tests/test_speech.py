@@ -30,6 +30,7 @@ Amélie              fr_CA    # Bonjour! Je m'appelle Amélie.
 
 class FakeSpeaker(SpeechOutput):
     def __init__(self) -> None:
+        self.voice: str | None = None
         self.said: list[str] = []
         self.stops = 0
         self.waited = False
@@ -177,7 +178,12 @@ def test_requests_from_the_socket_are_not_spoken(make_runtime: MakeRuntime) -> N
 def cli_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeSpeaker:
     speaker = FakeSpeaker()
     platform = FakePlatform()
-    monkeypatch.setattr(platform, "speech_output", lambda voice=None, rate=None: speaker)
+
+    def speech_output(voice: str | None = None, rate: int | None = None) -> FakeSpeaker:
+        speaker.voice = voice
+        return speaker
+
+    monkeypatch.setattr(platform, "speech_output", speech_output)
     monkeypatch.setattr(cli, "get_platform", lambda: platform)
     monkeypatch.setattr(cli, "InteractiveConfirmer", lambda: ScriptedConfirmer(False))
     monkeypatch.setattr(
@@ -202,4 +208,6 @@ def test_voice_commands(cli_platform: FakeSpeaker, capsys: pytest.CaptureFixture
     out = capsys.readouterr().out
     assert "Amélie" in out and "Samantha" not in out
     assert cli.main(["voice", "say", "hello", "there"]) == cli.EXIT_OK
-    assert cli_platform.said == ["hello there"]
+    assert cli_platform.said == ["hello there"] and cli_platform.voice is None
+    assert cli.main(["voice", "say", "--voice", "Tara", "hi"]) == cli.EXIT_OK
+    assert cli_platform.said[-1] == "hi" and cli_platform.voice == "Tara"

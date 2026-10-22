@@ -208,8 +208,9 @@ def build_parser() -> argparse.ArgumentParser:
     voice_list = voice_sub.add_parser("voices", parents=[common], help="list installed voices")
     voice_list.add_argument("--language", help='e.g. "en" or "en_GB"')
     voice_say = voice_sub.add_parser(
-        "say", parents=[common], help="say a sentence with the configured voice"
+        "say", parents=[common], help="say a sentence with the configured voice (or --voice)"
     )
+    voice_say.add_argument("--voice", help='try another voice, e.g. "Tara" (config unchanged)')
     voice_say.add_argument("text", nargs="+")
 
     workflow = sub.add_parser(
@@ -569,7 +570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return voice_cli.listen(config)
         if args.voice_command == "transcribe":
             return voice_cli.transcribe(config, args.file)
-        return voice_cli.say(config, platform, " ".join(args.text))
+        return voice_cli.say(config, platform, " ".join(args.text), voice=args.voice)
     if args.command == "daemon":
         return service_cli.run_daemon(config, platform, headless=args.headless)
     if args.command == "service":

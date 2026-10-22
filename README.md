@@ -100,7 +100,8 @@ jarvis memory export [FILE] # everything as JSON (file is 0600, never overwritte
 jarvis memory clear         # erase all (asks); --preferences, --history, --workflows
 jarvis memory remember editor "Visual Studio Code" / jarvis memory forget editor
 jarvis workflow list|show|run|delete NAME
-jarvis voice voices|say "…"         # spoken replies: pick and test a voice
+jarvis voice voices|say "…"         # spoken replies: list voices, hear the configured one
+jarvis voice say --voice Tara "…"   # try another voice without changing the config
 jarvis voice download|listen        # push-to-talk: model, and a microphone test
 jarvis voice transcribe FILE.wav    # transcribe a 16 kHz mono WAV
 ```

@@ -51,8 +51,13 @@ def voices(config: JarvisConfig, platform: PlatformAdapter, language: str | None
     return EXIT_OK
 
 
-def say(config: JarvisConfig, platform: PlatformAdapter, text: str) -> int:
-    """Speak ``text`` with the configured voice and wait until it's done."""
+def say(
+    config: JarvisConfig, platform: PlatformAdapter, text: str, *, voice: str | None = None
+) -> int:
+    """Speak ``text`` with the configured voice (or ``voice``) and wait until it's done."""
+    if voice:
+        settings = config.voice.model_copy(update={"voice": voice})
+        config = config.model_copy(update={"voice": settings})
     try:
         speaker = speaker_for(config, platform)
         speaker.check()
