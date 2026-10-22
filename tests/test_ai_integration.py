@@ -98,6 +98,15 @@ def test_follow_up_uses_conversation_history(runtime: Runtime, platform: FakePla
     assert platform.apps.quit_requests[-1] == "Notes"
 
 
+def test_remembered_preference_resolves_a_request(runtime: Runtime, platform: FakePlatform) -> None:
+    runtime.orchestrator.clear_history()
+    assert runtime.orchestrator.handle("remember that my number cruncher is Calculator").ok
+    reply = runtime.orchestrator.handle("open my number cruncher")
+    assert [(r.tool, r.status) for r in reply.results] == [("apps.open", ToolStatus.SUCCESS)]
+    assert platform.apps.launched[-1] == "Calculator"
+    assert runtime.orchestrator.handle("forget my number cruncher").ok
+
+
 def test_prompt_cache_survives_a_reload(tmp_path: Path) -> None:
     """The system prompt's state is saved once, restored after a reload, and plans match."""
     import zlib
