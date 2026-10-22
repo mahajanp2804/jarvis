@@ -57,7 +57,11 @@ class SaySpeaker(SpeechOutput):
         if not self._say.is_file():
             raise JarvisError(f"{self._say} is missing, so Jarvis can't speak.")
         if self._voice:
-            names = {v.name.casefold() for v in list_voices(self._say)}
+            # "Samantha" selects "Samantha (English (US))"; say itself silently falls back
+            # to the system voice for unknown names, so this check is the only guard.
+            names = set()
+            for voice in list_voices(self._say):
+                names |= {voice.name.casefold(), voice.name.split(" (")[0].casefold()}
             if self._voice.casefold() not in names:
                 raise JarvisError(
                     f"The voice '{self._voice}' isn't installed.",

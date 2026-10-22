@@ -38,6 +38,12 @@ browser = [
 screen = [
     "pyobjc-framework-Vision>=11.0,<13; sys_platform == 'darwin'",
 ]
+# Push-to-talk voice input: on-device speech-to-text (whisper.cpp) and microphone access.
+voice = [
+    "pywhispercpp>=1.5,<2",
+    "sounddevice>=0.5,<0.6",
+    "numpy>=2,<3",
+]
 dev = [
     "pytest>=8.3,<10",
     "ruff>=0.8,<1",
@@ -85,7 +91,11 @@ module = ["AppKit", "Foundation", "PyObjCTools", "PyObjCTools.*", "Quartz", "Vis
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Imported lazily and used through Any; its numpy stubs need Python 3.12 syntax.
-module = ["llama_cpp", "llama_cpp.*"]
+# Imported lazily and used through Any; numpy's stubs need Python 3.12 syntax.
+module = [
+    "llama_cpp", "llama_cpp.*", "numpy", "numpy.*",
+    "pywhispercpp", "pywhispercpp.*", "sounddevice",
+]
 follow_imports = "skip"
+follow_imports_for_stubs = true
 ignore_missing_imports = true

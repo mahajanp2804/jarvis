@@ -177,6 +177,12 @@ def show_status(config: JarvisConfig, platform: PlatformAdapter) -> int:
     else:
         shortcut = live.get("hotkey") or f"unavailable: {live.get('hotkey_error')}"
     print(f"Shortcut:      {shortcut}")
+    voice = []
+    if live.get("push_to_talk"):
+        voice.append(f"push-to-talk {live['push_to_talk']}")
+    if live.get("speak_replies"):
+        voice.append("spoken replies")
+    print(f"Voice:         {', '.join(voice) or 'off'}")
     model = "loaded" if live.get("model_loaded") else "not loaded (loads on demand)"
     if not live.get("ai_enabled"):
         model = "AI disabled"

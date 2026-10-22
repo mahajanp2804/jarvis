@@ -22,6 +22,7 @@ from pydantic import (
     ValidationError,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
 from jarvis.ai.registry import DEFAULT_MODEL
@@ -309,12 +310,7 @@ class ServiceConfig(_Section):
     @field_validator("hotkey")
     @classmethod
     def _valid_hotkey(cls, value: str) -> str:
-        from jarvis.runtime.hotkeys import Hotkey, HotkeyError
-
-        try:
-            return str(Hotkey.parse(value))
-        except HotkeyError as exc:
-            raise ValueError(exc.message + (f" {exc.hint}" if exc.hint else "")) from None
+        return _check_hotkey(value)
 
 
 class MemoryConfig(_Section):
@@ -343,8 +339,17 @@ class MemoryConfig(_Section):
         return self.path or default_memory_path()
 
 
+def _check_hotkey(value: str) -> str:
+    from jarvis.runtime.hotkeys import Hotkey, HotkeyError
+
+    try:
+        return str(Hotkey.parse(value))
+    except HotkeyError as exc:
+        raise ValueError(exc.message + (f" {exc.hint}" if exc.hint else "")) from None
+
+
 class VoiceConfig(_Section):
-    """Spoken replies (on-device text-to-speech). Off by default."""
+    """Spoken replies and push-to-talk voice input (both on-device, both off by default)."""
 
     # Say a short summary of each reply (shortcut dialog, `jarvis shell`, `jarvis run`).
     speak_replies: bool = False
@@ -355,12 +360,39 @@ class VoiceConfig(_Section):
     # Longest summary spoken per reply.
     max_spoken_chars: int = Field(default=300, ge=40, le=2000)
 
+    # Push-to-talk input: press the shortcut, speak, pause (or press it again).
+    # Needs `pip install -e ".[voice]"` and `jarvis voice download` (60 MB).
+    push_to_talk: bool = False
+    push_to_talk_hotkey: str = "ctrl+option+cmd+k"
+    # whisper.cpp model; unset = the default model in the models directory.
+    stt_model_path: Path | None = None
+    # Spoken language (two-letter code); "en" models only understand English.
+    language: str = Field(default="en", pattern=r"^(?:[a-z]{2,3}|auto)$")
+    max_record_seconds: float = Field(default=15.0, ge=2, le=60)
+    # Stop recording after this much quiet following speech (0 = only when told).
+    silence_seconds: float = Field(default=1.5, ge=0, le=10)
+
     @field_validator("rate")
     @classmethod
     def _sensible_rate(cls, value: int) -> int:
         if 0 < value < 80:
             raise ValueError("rate must be 0 (system default) or 80-500 words per minute")
         return value
+
+    @field_validator("push_to_talk_hotkey")
+    @classmethod
+    def _valid_hotkey(cls, value: str) -> str:
+        return _check_hotkey(value)
+
+    @field_validator("stt_model_path")
+    @classmethod
+    def _expand(cls, value: Path | None) -> Path | None:
+        return value.expanduser() if value is not None else None
+
+    def resolved_stt_model_path(self) -> Path:
+        from jarvis.voice.models import DEFAULT_STT_MODEL
+
+        return self.stt_model_path or default_models_dir() / DEFAULT_STT_MODEL.filename
 
 
 class JarvisConfig(_Section):
@@ -377,6 +409,12 @@ class JarvisConfig(_Section):
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+
+    @model_validator(mode="after")
+    def _distinct_hotkeys(self) -> JarvisConfig:
+        if self.voice.push_to_talk and self.voice.push_to_talk_hotkey == self.service.hotkey:
+            raise ValueError("voice.push_to_talk_hotkey must differ from service.hotkey")
+        return self
 
 
 EXAMPLE_CONFIG_TOML = """\
@@ -517,6 +555,18 @@ voice = ""
 # Words per minute; 0 = system default.
 rate = 0
 max_spoken_chars = 300
+# Push-to-talk: press the shortcut (⌃⌥⌘K), speak, then pause or press it again.
+# You see (and can edit) the transcript before anything runs. Nothing listens
+# in the background. Needs: pip install -e ".[voice]" and `jarvis voice download`.
+push_to_talk = false
+push_to_talk_hotkey = "ctrl+option+cmd+k"
+# Uncomment to use another whisper.cpp model. Default:
+# ~/Library/Application Support/Jarvis/models/ggml-base.en-q5_1.bin
+# stt_model_path = "~/models/ggml-small.en-q5_1.bin"
+language = "en"
+max_record_seconds = 15.0
+# Stop after this much quiet following speech (0 = only when you press again).
+silence_seconds = 1.5
 """
 
 

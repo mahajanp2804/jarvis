@@ -16,7 +16,9 @@ marshals calls from worker threads.
 from __future__ import annotations
 
 import ctypes
+import itertools
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -87,6 +89,8 @@ _KEY_CODES = {  # kVK_* virtual key codes (ANSI layout positions)
 }  # fmt: skip
 _MODIFIER_FLAGS = {"cmd": 1 << 8, "shift": 1 << 9, "option": 1 << 11, "ctrl": 1 << 12}
 _EVENT_HOTKEY_EXISTS = -9878
+_EVENT_NOT_HANDLED = -9874
+_HOTKEY_IDS = itertools.count(1)  # one id per listener, so each handles only its own key
 
 
 def carbon_codes(hotkey: Hotkey) -> tuple[int, int]:
@@ -137,6 +141,16 @@ class CarbonHotkeyListener(HotkeyListener):
         ]
         self._carbon.UnregisterEventHotKey.argtypes = [ctypes.c_void_p]
         self._carbon.RemoveEventHandler.argtypes = [ctypes.c_void_p]
+        self._carbon.GetEventParameter.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        self._id = next(_HOTKEY_IDS)
         self._hotkey_ref: ctypes.c_void_p | None = None
         self._handler_ref: ctypes.c_void_p | None = None
         self._c_callback: Any = None  # keep a reference so ctypes doesn't free it
@@ -144,7 +158,16 @@ class CarbonHotkeyListener(HotkeyListener):
     def register(self, hotkey: Hotkey, callback: Callable[[], None]) -> None:
         self.unregister()
 
-        def on_event(_call_ref: int, _event: int, _user: int) -> int:
+        def on_event(_call_ref: int, event: int, _user: int) -> int:
+            # Every listener's handler sees every hotkey press: act only on our own id
+            # and let the other handlers have the rest.
+            pressed = _EventHotKeyID()
+            status = self._carbon.GetEventParameter(
+                event, _fourcc("----"), _fourcc("hkid"), None,
+                ctypes.sizeof(pressed), None, ctypes.byref(pressed),
+            )  # fmt: skip
+            if status != 0 or pressed.id != self._id:
+                return _EVENT_NOT_HANDLED
             # Leave the Carbon handler quickly; open dialogs from the run loop.
             self._loop.call_soon(callback)
             return 0
@@ -163,7 +186,7 @@ class CarbonHotkeyListener(HotkeyListener):
         key_code, modifiers = carbon_codes(hotkey)
         hotkey_ref = ctypes.c_void_p()
         status = self._carbon.RegisterEventHotKey(
-            key_code, modifiers, _EventHotKeyID(_fourcc("JRVS"), 1), target, 0,
+            key_code, modifiers, _EventHotKeyID(_fourcc("JRVS"), self._id), target, 0,
             ctypes.byref(hotkey_ref),
         )  # fmt: skip
         if status != 0:
@@ -204,6 +227,12 @@ class AlertUI(UserInterface):
         NSApp.activateIgnoringOtherApps_(True)
 
     def prompt(self, title: str, message: str) -> str | None:
+        return self._text_dialog(title, message, "")
+
+    def edit(self, title: str, message: str, text: str) -> str | None:
+        return self._text_dialog(title, message, text)
+
+    def _text_dialog(self, title: str, message: str, text: str) -> str | None:
         from AppKit import NSAlert, NSAlertFirstButtonReturn, NSTextField
         from Foundation import NSMakeRect
 
@@ -212,6 +241,7 @@ class AlertUI(UserInterface):
         alert.setInformativeText_(_clip(message))
         field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 380, 24))
         field.setPlaceholderString_('e.g. "open my browser and the notes app"')
+        field.setStringValue_(_clip(text))
         alert.setAccessoryView_(field)
         alert.addButtonWithTitle_("Run")
         alert.addButtonWithTitle_("Cancel")
@@ -232,6 +262,29 @@ class AlertUI(UserInterface):
         alert.addButtonWithTitle_("Allow")
         self._activate()
         return bool(alert.runModal() == NSAlertSecondButtonReturn)
+
+    def listen(self, title: str, message: str, finished: threading.Event) -> bool:
+        from AppKit import NSAlert, NSAlertFirstButtonReturn, NSApp, NSModalPanelRunLoopMode
+        from Foundation import NSRunLoop, NSTimer
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(title)
+        alert.setInformativeText_(_clip(message))
+        alert.addButtonWithTitle_("Done")
+        alert.addButtonWithTitle_("Cancel")
+
+        def close_when_finished(_timer: Any) -> None:
+            if finished.is_set() and NSApp.modalWindow() is not None:
+                NSApp.stopModalWithCode_(NSAlertFirstButtonReturn)
+
+        # Checked 10 times a second, only while this dialog is open.
+        timer = NSTimer.timerWithTimeInterval_repeats_block_(0.1, True, close_when_finished)
+        NSRunLoop.currentRunLoop().addTimer_forMode_(timer, NSModalPanelRunLoopMode)
+        self._activate()
+        try:
+            return bool(alert.runModal() == NSAlertFirstButtonReturn)
+        finally:
+            timer.invalidate()
 
     def show(self, title: str, message: str) -> None:
         from AppKit import NSAlert, NSApp, NSModalPanelRunLoopMode

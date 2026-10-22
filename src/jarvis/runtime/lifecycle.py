@@ -39,6 +39,7 @@ from jarvis.runtime.control import ControlServer
 from jarvis.runtime.event_loop import EventLoop, SignalBridge
 from jarvis.runtime.hotkeys import Hotkey, HotkeyError, HotkeyListener
 from jarvis.ui.base import HeadlessUI, UserInterface
+from jarvis.voice.listen import VoiceInput
 from jarvis.voice.speech import SpeechOutput
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ class Daemon:
         self.assistant: Assistant | None = None
         self.hotkey: Hotkey | None = None
         self.hotkey_error: str | None = None
+        self.voice_hotkey: Hotkey | None = None
         self._cancel = threading.Event()
         self._ready = threading.Event()
 
@@ -144,6 +146,7 @@ class Daemon:
         control: ControlServer | None = None
         bridge: SignalBridge | None = None
         listener: HotkeyListener | None = None
+        voice_listener: HotkeyListener | None = None
         try:
             loop = self.platform.event_loop(headless=self.headless)
             ui: UserInterface = HeadlessUI() if self.headless else self.platform.user_interface()
@@ -159,6 +162,8 @@ class Daemon:
                 show_success=self.config.service.show_success,
                 speaker=self._speaker(),
                 spoken_chars=self.config.voice.max_spoken_chars,
+                voice=self._voice_input(),
+                voice_shortcut=Hotkey.parse(self.config.voice.push_to_talk_hotkey).symbol(),
             )
             self.assistant = assistant
             control = ControlServer(self.paths.socket, self.handle_control)
@@ -167,6 +172,8 @@ class Daemon:
             control.start()
             if not self.headless:
                 listener = self._register_hotkey(loop, assistant)
+                if self.config.voice.push_to_talk:
+                    voice_listener = self._register_voice_hotkey(loop, assistant)
             log.info(
                 "Jarvis %s service started (pid %d, %s, shortcut %s)",
                 __version__,
@@ -178,7 +185,7 @@ class Daemon:
             loop.run()
             log.info("Shutting down")
         finally:
-            self._shutdown(control, listener, bridge, lock)
+            self._shutdown(control, [listener, voice_listener], bridge, lock)
         return 0
 
     # -- requests ----------------------------------------------------------------------
@@ -206,6 +213,8 @@ class Daemon:
                 "worker_pids": models.backend.process_ids() if models else [],
                 "busy": assistant.busy,
                 "requests": assistant.requests_handled,
+                "speak_replies": self.config.voice.speak_replies,
+                "push_to_talk": self.voice_hotkey.symbol() if self.voice_hotkey else None,
             }
         if command == "activate":
             if self.headless:
@@ -239,6 +248,26 @@ class Daemon:
             log.error("Spoken replies unavailable: %s", exc.message)
             return None
 
+    def _voice_input(self) -> VoiceInput | None:
+        if not self.config.voice.push_to_talk:
+            return None
+        from jarvis.voice_cli import voice_input  # the model is checked on each press
+
+        return voice_input(self.config)
+
+    def _register_voice_hotkey(
+        self, loop: EventLoop, assistant: Assistant
+    ) -> HotkeyListener | None:
+        try:
+            hotkey = Hotkey.parse(self.config.voice.push_to_talk_hotkey)
+            listener = self.platform.hotkey_listener(loop)
+            listener.register(hotkey, assistant.push_to_talk)
+        except JarvisError as exc:
+            log.error("Push-to-talk shortcut unavailable: %s %s", exc.message, exc.hint or "")
+            return None
+        self.voice_hotkey = hotkey
+        return listener
+
     def _register_hotkey(self, loop: EventLoop, assistant: Assistant) -> HotkeyListener | None:
         try:
             hotkey = Hotkey.parse(self.config.service.hotkey)
@@ -260,7 +289,7 @@ class Daemon:
     def _shutdown(
         self,
         control: ControlServer | None,
-        listener: HotkeyListener | None,
+        listeners: list[HotkeyListener | None],
         bridge: SignalBridge | None,
         lock: InstanceLock,
     ) -> None:
@@ -269,11 +298,13 @@ class Daemon:
             self.loop.stop()  # releases any worker waiting on a dialog
         if control is not None:
             control.stop()
-        if listener is not None:
+        for listener in listeners:
+            if listener is None:
+                continue
             try:
                 listener.unregister()
             except HotkeyError:
-                log.warning("Could not unregister the shortcut", exc_info=True)
+                log.warning("Could not unregister a shortcut", exc_info=True)
         self._cancel.set()
         runtime = self.runtime
         if runtime is not None and runtime.models is not None:

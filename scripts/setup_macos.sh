@@ -42,9 +42,9 @@ fi
 [[ -n "${PYTHON}" ]] || die "no arm64 Python >= 3.11 found. Install one with: brew install python@3.14"
 is_suitable "${PYTHON}" || die "${PYTHON} is not an arm64 Python >= 3.11."
 
-EXTRAS="dev,llm,browser,screen"
+EXTRAS="dev,llm,browser,screen,voice"
 if [[ "${JARVIS_SKIP_LLM:-0}" == "1" ]]; then
-    EXTRAS="dev,browser,screen"
+    EXTRAS="dev,browser,screen,voice"
 elif ! xcode-select -p >/dev/null 2>&1; then
     die "Xcode Command Line Tools are needed to build llama-cpp-python. Run: xcode-select --install
        (or set JARVIS_SKIP_LLM=1 to install without local AI)"

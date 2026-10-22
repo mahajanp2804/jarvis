@@ -23,7 +23,7 @@ MakeRuntime = Callable[..., tuple[Runtime, ScriptedConfirmer]]
 VOICES = """\
 Albert              en_US    # Hello! My name is Albert.
 Eddy (English (US)) en_US    # Hello! My name is Eddy.
-Samantha            en_US    # Hello! My name is Samantha.
+Samantha (English (US)) en_US    # Hello! My name is Samantha.
 Amélie              fr_CA    # Bonjour! Je m'appelle Amélie.
 """
 
@@ -135,7 +135,7 @@ def test_voices_and_check(tmp_path: Path) -> None:
     assert names == [
         ("Albert", "en_US"),
         ("Eddy (English (US))", "en_US"),
-        ("Samantha", "en_US"),
+        ("Samantha (English (US))", "en_US"),
         ("Amélie", "fr_CA"),
     ]
     SaySpeaker("samantha", say=say).check()
