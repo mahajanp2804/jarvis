@@ -62,9 +62,19 @@ control handler above instead.
 | `capture_screen` / `recognize_text` | `screencapture` + Apple Vision | `Windows.Graphics.Capture` + `Windows.Media.Ocr` (on-device) |
 | Browser tools | Playwright with installed Chrome/Edge | Same code; Edge is preinstalled (`channel="msedge"`) |
 
+### Memory and voice (Phase 5 interfaces)
+
+| Interface | macOS (implemented) | Windows (plan) |
+|---|---|---|
+| Memory database | `~/Library/Application Support/Jarvis/memory.sqlite3`, `0600` | `%APPDATA%\Jarvis\memory.sqlite3` (already in `paths.py`); restrict with an ACL for the current user, since POSIX modes don't apply |
+| `SpeechOutput` | `SaySpeaker`: `/usr/bin/say -f -` (text on stdin), one child process per reply | `System.Speech` / SAPI `SpVoice` through `comtypes` or `pywin32`, or WinRT `Windows.Media.SpeechSynthesis`; same non-blocking `speak`/`stop` contract |
+| Voice worker | `python -m jarvis.voice.stt_worker`: `sounddevice` (PortAudio) + `pywhispercpp` | Same code: both have Windows wheels. PortAudio uses WASAPI. Whisper on the CPU by default (CUDA/Vulkan builds optional) |
+| Push-to-talk shortcut | Second Carbon hotkey, filtered by hotkey id | Second `RegisterHotKey` id on the same message window |
+| `UserInterface.listen` / `edit` | `NSAlert` closed by a modal-mode timer; prefilled text field | A small Win32/Tk dialog with Done/Cancel closed from a timer; an edit box prefilled with the transcript |
+| Terminal push-to-talk | `select()` on stdin while recording | `msvcrt.kbhit()` polling (Windows `select` only works on sockets) |
+| Microphone permission | macOS asks per responsible app (terminal, or Python for the service) | Settings → Privacy → Microphone → "Let desktop apps access your microphone" |
+
 ### Later phases
-* **Speech (Phase 5):** Windows SAPI / `Windows.Media.SpeechSynthesis` for output.
-  The local speech-to-text engine chosen in Phase 5 for input.
 * **Accessibility (Phase 4+):** UI Automation (UIA) instead of the macOS AX API.
 
 ## Definition of done for Windows

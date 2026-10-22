@@ -48,6 +48,27 @@ place it in `~/Library/Application Support/Jarvis/models/`, then run
 Run `jarvis benchmark` to measure on your machine. See the main README for the
 idle-cost and battery trade-offs.
 
+## Speech model (optional, for push-to-talk): Whisper base.en (q5_1)
+
+| | |
+|---|---|
+| File | `ggml-base.en-q5_1.bin`, 59,721,011 bytes |
+| Source | [`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp), pinned to revision `5359861c` |
+| SHA-256 | `4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f` |
+| Licence | MIT |
+| Why | Small (60 MB), English, accurate on short commands: 6/6 synthesized test commands transcribed exactly, ~0.2 s each on an M4 CPU |
+
+```bash
+jarvis voice download          # asks first; verifies SHA-256
+jarvis voice transcribe x.wav  # check it on a 16 kHz mono WAV
+```
+
+It runs in a worker process that exists only during a voice request. For
+other languages, set `[voice] stt_model_path` to a multilingual whisper.cpp
+model (e.g. `ggml-base-q5_1.bin`) and `[voice] language`. Other models aren't
+verified by Jarvis. `ggml-small.en-q5_1.bin` (190 MB) is a step up in accuracy
+if base.en mishears you.
+
 ## Other models (untested with Jarvis)
 
 Any instruction-tuned GGUF model with a chat template should work through

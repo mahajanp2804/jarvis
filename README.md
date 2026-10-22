@@ -6,7 +6,8 @@ Press **⌃⌥⌘J** anywhere, type what you want, and Jarvis turns it into chec
 permission-gated actions on your computer:
 
 * It runs quietly in the background as a Launch Agent. Idle, it uses ~0.004% CPU
-  and ~51 MB, with no polling, no microphone, and no screen capture unless you ask.
+  and ~50 MB, with no polling, no listening microphone, and no screen capture
+  unless you ask.
 * A rule-based fast path handles simple commands ("open Safari") in milliseconds,
   without AI.
 * A local GGUF model (Qwen3-4B via `llama-cpp-python`, on the Metal GPU) plans
@@ -17,9 +18,15 @@ permission-gated actions on your computer:
   (opt-in) **the screen**. The model can only *propose* tool calls. Every action
   goes through the same validation, sandbox, permission policy, confirmation
   dialog and audit log.
+* It **remembers** what you ask it to ("my editor is VS Code"), keeps a task
+  history you can inspect, export and erase, and can **replay a task as a
+  workflow** ("save that as morning setup"). Approvals are never remembered.
+* Optional **voice**: press **⌃⌥⌘K**, speak, check the transcript, run it
+  (on-device whisper.cpp); and spoken replies with the built-in macOS voices.
+  Both are off by default.
 
-> **Status: Phase 4 of 6 (computer automation).** Voice input/output and
-> persistent memory come next. See [Roadmap](#roadmap).
+> **Status: Phase 5 of 6 (memory and voice).** Windows adapters come next. See
+> [Roadmap](#roadmap).
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -27,7 +34,7 @@ permission-gated actions on your computer:
 | 2 | Local LLM via `llama-cpp-python`, lazy load / idle unload, validated tool selection, benchmark | ✅ done |
 | 3 | Launch Agent, global hotkey, graceful lifecycle, model worker process | ✅ done |
 | 4 | File, project, terminal, browser (Playwright) and screen tools; multi-step agent loop with verification and bounded retries | ✅ done |
-| 5 | Push-to-talk voice, spoken replies, SQLite memory | planned |
+| 5 | SQLite memory (preferences, task history, workflows) with inspect/export/clear; spoken replies; push-to-talk voice input | ✅ done |
 | 6 | Windows adapters, portfolio polish | planned |
 
 ## Quick start (macOS, Apple Silicon)
@@ -38,11 +45,12 @@ model, and Google Chrome (or Edge/Brave) for the browser tools.
 
 ```bash
 cd ~/Desktop/Project/jarvis
-scripts/setup_macos.sh          # .venv + Jarvis + llama.cpp (Metal) + Playwright + Vision OCR
+scripts/setup_macos.sh          # .venv + Jarvis + llama.cpp (Metal) + Playwright + OCR + voice
 source .venv/bin/activate
 jarvis model download           # 2.5 GB; shows details and asks first
 jarvis doctor                   # environment, permission and model checks
 scripts/install_macos.sh        # start at login; then press ⌃⌥⌘J
+jarvis voice download           # optional, for push-to-talk: 60 MB speech model
 ```
 
 Things to try:
@@ -54,6 +62,9 @@ what's on the todo list on my desktop?
 organize my downloads folder by type
 search the web for llama.cpp metal performance
 which processes did you start? / stop p1
+remember that my editor is Visual Studio Code      → then: open my editor
+save that as dev start                             → later: run the dev start workflow
+what do you remember? / list workflows
 ```
 
 * **Shortcut:** press ⌃⌥⌘J, type a request, press Return. Visible successes need
@@ -63,7 +74,11 @@ which processes did you start? / stop p1
   `jarvis ask "…"`.
 * **Terminal, standalone:** `jarvis run "…"`, `jarvis shell`. Add `--dry-run` to
   preview a plan: read-only steps (search, read, inspect) run, and anything that
-  would change something is only described.
+  would change something is only described. Add `--speak` to hear a short
+  summary of each reply.
+* **Voice:** with push-to-talk on, press ⌃⌥⌘K anywhere; in a terminal,
+  `jarvis listen` or `jarvis shell --voice` (Enter on an empty line). See
+  [Voice](#voice).
 
 Service management (scripts in `scripts/` wrap the same commands):
 
@@ -75,6 +90,19 @@ jarvis service restart
 jarvis service measure      # sample the service's idle CPU, wakeups, memory
 jarvis service uninstall    # removes the Launch Agent; keeps config, logs, models
 jarvis activate             # open the dialog as if the shortcut were pressed
+```
+
+Memory, workflows and voice:
+
+```bash
+jarvis memory show          # preferences, recent tasks, workflows, where it's stored
+jarvis memory export [FILE] # everything as JSON (file is 0600, never overwritten)
+jarvis memory clear         # erase all (asks); --preferences, --history, --workflows
+jarvis memory remember editor "Visual Studio Code" / jarvis memory forget editor
+jarvis workflow list|show|run|delete NAME
+jarvis voice voices|say "…"         # spoken replies: pick and test a voice
+jarvis voice download|listen        # push-to-talk: model, and a microphone test
+jarvis voice transcribe FILE.wav    # transcribe a 16 kHz mono WAV
 ```
 
 Other commands: `jarvis apps list|open|quit`, `jarvis model info|check|download`,
@@ -93,6 +121,7 @@ cancelled, needs clarification, or not understood), `130` interrupted.
 | `terminal.*` | `run`, `list`, `output`, `stop`, `open` | per command | Allowlisted commands, no shell; servers run in the background and are stopped when Jarvis exits |
 | `browser.*` | `open`, `search`, `read`, `click`, `type`, `close` | low → high | Your installed Chrome with a separate profile; DOM element refs, never coordinates |
 | `screen.*` | `read_text`, `capture` | medium (asks every time) | **Off by default.** On-device OCR (Apple Vision); captures deleted after reading |
+| `memory.*` | `remember`, `forget`, `list`, `history` | low / read-only | Preferences you state; refuses secrets; asks first after outside content was read. No tool can clear memory |
 
 ### How the terminal decides
 
@@ -107,24 +136,96 @@ Commands are split into arguments and run directly, so pipes, redirection,
 | high | `pip install`, `npm install`, `git push`, `git reset --hard` | always |
 | refused | `sudo`, `rm`, shells, `python -c`, `curl`, `ssh`, `osascript`, `launchctl`, `git config` | never runs |
 
+## Memory and workflows
+
+Jarvis keeps a small SQLite database at
+`~/Library/Application Support/Jarvis/memory.sqlite3` (owner-only, `0600`;
+outside the repository and outside the folders its file tools may touch).
+
+| What | How it gets there | How it's used |
+|---|---|---|
+| **Preferences** | "remember that my editor is Visual Studio Code", or `jarvis memory remember` | Given to the model as facts, so "open my editor" works. Never instructions, never permissions |
+| **Task history** | Every request: text, outcome, tools and shortened arguments, source (cli, shell, service, voice) | `jarvis memory show`, "what did I do earlier?" (`memory.history`). Kept 30 days / 1,000 tasks |
+| **Workflows** | "save that as morning setup" saves the completed steps of the previous request | "run the morning setup workflow" replays them, without the model |
+
+**Never stored:** approvals (every risky step asks again, every time; a "yes"
+is never permission for later); passwords, keys and tokens (the same redaction
+as the logs, requests that mention a password, PIN, card number or similar are
+stored without their text, and such preferences or workflow steps are refused);
+and outside content (a reply that quoted a file, page, command output or screen
+text isn't stored).
+
+**Replays get no shortcuts.** A workflow step goes through validation, the
+policy, confirmation, verification and the audit log exactly like a typed
+request. A blocked app stays blocked, a risky step asks every run, outside
+content read by one step makes later steps ask first, and the replay stops at
+the first failure.
+
+**Inspect, export, erase:** `jarvis memory show | export | clear`. Clearing
+uses SQLite `secure_delete` and `VACUUM`, so erased entries don't linger in the
+file. `[memory] enabled = false` turns it all off; `record_history = false`
+keeps preferences and workflows but no history.
+
+## Voice
+
+Both halves are optional, on-device, and off by default.
+
+**Spoken replies** (`[voice] speak_replies = true`, or `--speak`): Jarvis says a
+short summary with the built-in macOS voices (`/usr/bin/say`): the answer or
+question, or the outcome of the last step. Lists, file contents and pages are
+shown, not read aloud. Speech stops when you press the shortcut again, when a
+new request starts, and when Jarvis stops. Pick a voice with
+`jarvis voice voices` and `[voice] voice = "Daniel"`.
+
+**Push-to-talk** (`[voice] push_to_talk = true`, after `jarvis voice download`):
+
+1. Press **⌃⌥⌘K**. A "Listening…" dialog appears and a worker process opens
+   the microphone.
+2. Speak. Recording stops when you pause (1.5 s), press ⌃⌥⌘K again, or click
+   Done (15 s at most).
+3. whisper.cpp transcribes on-device, and the worker exits.
+4. You see the transcript in an editable box. Nothing runs until you press Run;
+   then it's a normal request, with the normal planner, policy and confirmations.
+
+Nothing listens before you press the shortcut: there's no wake word. Audio
+stays in memory and is never written to disk. In a terminal, `jarvis listen`
+and `jarvis shell --voice` work the same way (Enter stops recording, then
+`[Y]es / [e]dit / [n]o`). `jarvis voice listen` only prints what it heard.
+
+**Microphone permission.** macOS asks the first time the microphone is used,
+and it asks on behalf of the app that started Jarvis. That's your terminal app
+for `jarvis listen`, and Python for the background service. Python's
+Homebrew app bundle doesn't declare a microphone purpose string, so macOS
+may refuse the service without asking. Jarvis then says "The microphone gave
+only silence" and points to System Settings → Privacy & Security →
+Microphone. If the service can't get the microphone, `jarvis listen` in your
+terminal works, and so does macOS Dictation in the ⌃⌥⌘J box (press the
+microphone or Globe key).
+
 ## Architecture
 
 ```
  launchd (Launch Agent, RunAtLoad, KeepAlive on crash)
    └─ jarvis daemon  ── main thread: AppKit run loop (accessory app, no Dock icon)
         │   ⌃⌥⌘J (Carbon RegisterEventHotKey) ──► request dialog (NSAlert)
+        │   ⌃⌥⌘K (optional) ──► "Listening…" ══ voice worker (mic + whisper.cpp,
+        │                        one process per request) ──► editable transcript
         │   SIGTERM/SIGINT ──► SignalBridge ──► graceful shutdown
         │   control socket (status / activate / ask) ◄── jarvis service status|ask
         ▼
    Assistant (one worker thread): request → reply → dialog only if useful
-        │
+        │                                    └─► spoken summary (say, optional)
         ▼
- Orchestrator ──► Router (regex fast path, no AI) ── match ──────────────────┐
+ Orchestrator ──► "save that as …" / "run the … workflow" ──► MemoryStore (SQLite)
+      │           (replayed step by step through the Dispatcher below)   ▲ history,
+      ▼                                                                   │ preferences
+ Router (regex fast path, no AI) ── match ───────────────────────────────┼──┐
       │              no match / unknown app name                             │
       ▼                                                                      │
- Agent loop (≤ max_rounds):                                                  │
-   Planner ── ModelManager ── SubprocessBackend ══ pipe ══ model worker      │
-     │  prompt: enabled tools, app names, history, earlier rounds' results   │
+ Agent loop (≤ max_rounds):                                               │  │
+   Planner ── ModelManager ── SubprocessBackend ══ pipe ══ model worker   │  │
+     │  prompt: system (tools, app names) + preferences ─────────────────┘  │
+     │          + conversation + earlier rounds' results                     │
      │  output: grammar-constrained JSON plan, then pydantic-checked         │
      ▼                                                                       │
    Plan: execute [steps] (finish?) │ clarify │ respond                       │
@@ -135,17 +236,20 @@ Commands are split into arguments and run directly, so pipes, redirection,
                → bounded retries (idempotent tools) → audit
      │
      ▼ results (data, never instructions) ──► back to the planner, or the reply
-   Tools: apps · files · projects · terminal · browser · screen → PlatformAdapter
+   Tools: apps · files · projects · terminal · browser · screen · memory → PlatformAdapter
 ```
 
 | Module | Responsibility |
 |---|---|
-| `jarvis/main.py`, `model_cli.py`, `service_cli.py` | CLI, exit codes, shell, model/benchmark/service commands |
+| `jarvis/main.py`, `model_cli.py`, `service_cli.py`, `memory_cli.py`, `voice_cli.py` | CLI, exit codes, shell, model/benchmark/service/memory/workflow/voice commands |
 | `jarvis/bootstrap.py` | Composition root shared by the CLI and the service |
 | `jarvis/config.py`, `paths.py` | Validated config: defaults < TOML < env < CLI flags |
 | `jarvis/agent/router.py` | Rule-based fast path (never guesses) |
 | `jarvis/agent/planner.py` | LLM planner: schema-constrained plans, rounds, context budget |
-| `jarvis/agent/orchestrator.py` | Agent loop: execute, observe, stop rules, taint, summaries, history |
+| `jarvis/agent/orchestrator.py` | Agent loop: execute, observe, stop rules, taint, summaries, history, workflow save/replay |
+| `jarvis/agent/workflows.py` | "save that as …" / "run the … workflow" commands |
+| `jarvis/memory/store.py` | SQLite memory: preferences, task history, workflows; redaction, retention, export, clear |
+| `jarvis/voice/` | Speech-output contract and summaries; push-to-talk recordings, worker process, speech model |
 | `jarvis/ai/` | Backend interface, llama.cpp backend, worker process, model manager, model files |
 | `jarvis/api/` | `ToolCall`/`ToolResult` schemas; dispatcher (policy, confirmation, retries, audit) |
 | `jarvis/tools/paths.py` | Path sandbox shared by file, project, terminal and screen tools |
@@ -154,9 +258,10 @@ Commands are split into arguments and run directly, so pipes, redirection,
 | `jarvis/tools/browser.py` | Playwright session on its own thread; DOM snapshots; browser tools |
 | `jarvis/tools/screen.py` | Opt-in screenshot and OCR tools |
 | `jarvis/tools/applications.py` | App catalog, name resolution, `apps.*` tools |
+| `jarvis/tools/memory.py` | `memory.*` tools |
 | `jarvis/runtime/` | Service lifecycle, event loop and signals, assistant flow, control socket, hotkeys, permissions, audit |
-| `jarvis/ui/base.py` | Dialog interface (`prompt`/`confirm`/`show`) + headless implementation |
-| `jarvis/platforms/` | OS adapters: `macos.py` (apps, files, Spotlight, Trash, screen, OCR, stats), `macos_gui.py`, `macos_service.py`, `windows.py` (placeholder) |
+| `jarvis/ui/base.py` | Dialog interface (`prompt`/`confirm`/`show`, optional `listen`/`edit`) + headless implementation |
+| `jarvis/platforms/` | OS adapters: `macos.py` (apps, files, Spotlight, Trash, screen, OCR, stats), `macos_gui.py`, `macos_service.py`, `macos_speech.py`, `windows.py` (placeholder) |
 | `jarvis/benchmark.py` | Load / inference / memory / idle-cost measurements |
 
 ### Design decisions
@@ -189,7 +294,7 @@ Commands are split into arguments and run directly, so pipes, redirection,
   grammar rule per character. A 100,000-character limit once produced an 816 KB
   grammar that crashed the model worker. The grammar therefore omits large
   limits and regex patterns, and pydantic still enforces both on the parsed plan.
-  With 25 tools the grammar is 21.6 KB.
+  With the 29 default tools the grammar is 27.3 KB (21.6 KB with Phase 4's 25).
 * **Model in a worker process** (`[ai] isolation = "subprocess"`). Unloading
   returns all model memory to the OS. Shutdown can kill a generation mid-way, and
   a llama.cpp crash (like the grammar one above) can't take the service down.
@@ -206,6 +311,19 @@ Commands are split into arguments and run directly, so pipes, redirection,
   the screen tool only reads text. Nothing clicks by screen coordinates.
 * **Metal residency keep-alive off by default.** It cost ~250 CPU wakeups/s
   while a model was loaded, for no measured latency benefit.
+* **Preferences after the system prompt, not in it.** They go in a second
+  system message, so remembering something doesn't invalidate the saved
+  prompt state (~5 s to rebuild).
+* **Voice input in a throwaway process.** Freeing whisper.cpp inside a
+  long-running process kept ~85 MB (measured), and PortAudio and numpy would
+  stay loaded too. A worker per request starts in ~0.1 s, loads the model while
+  you speak, and gives everything back when it exits.
+* **Whisper on the CPU by default.** 0.2 s per command instead of 0.08 s, but
+  never the ~7 s Metal shader compile that happens whenever macOS has reset its
+  shader cache (`[voice] stt_use_gpu` switches).
+* **Workflows replay tool calls, not prompts.** A saved workflow is the exact
+  list of steps that ran, so a replay is predictable and needs no model, and
+  it still goes through the dispatcher one step at a time.
 
 ## Security model
 
@@ -242,14 +360,23 @@ Commands are split into arguments and run directly, so pipes, redirection,
 * **Confirmations default to No.** Cancel is the default button. A dialog that's
   open when Jarvis stops counts as No. Headless runs deny, and approvals are
   never cached.
+* **Memory:** no approvals are stored, ever. Secrets are refused or left out,
+  outside content isn't stored, the database is `0600`, and erasing it really
+  erases it (`secure_delete` + `VACUUM`). Preferences reach the model as
+  facts, never as instructions or permissions. Remembering after outside
+  content was read asks first, so a web page can't plant a "preference".
+  Workflows replay through the full policy pipeline.
+* **Voice:** nothing listens until you press the shortcut. Audio is never
+  written to disk, and you see (and can edit) the transcript before anything
+  runs. Spoken text goes to `say` on stdin, never as arguments.
 * **Local control socket** (`0600`, `0700` directory, peer-uid check). Requests
   get the same policy and dialogs.
 * **Audit log** at `~/Library/Logs/Jarvis/audit.jsonl`: every tool call with its
   risk, decision, taint, attempts and outcome. Credentials are redacted, and the
   files are `0600`.
-* **Local only.** Prompts never leave the machine. Nothing is downloaded unless
-  you run `jarvis model download`. Web pages are only fetched by browser tools
-  you ask for.
+* **Local only.** Prompts and audio never leave the machine. Nothing is
+  downloaded unless you run `jarvis model download` or `jarvis voice download`.
+  Web pages are only fetched by browser tools you ask for.
 
 ## Configuration
 
@@ -268,19 +395,26 @@ Key settings:
 
 | Section | Settings (defaults) |
 |---|---|
-| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
+| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`, `memory.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
 | `[files]` | `read_roots` (`~`), `write_roots` (Desktop, Documents, Downloads), `project_roots`, `blocked_paths` (`~/Library`, `~/.Trash`), `allow_hidden` (false) |
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
 | `[agent]` | `max_rounds` (6), `max_tool_retries` (2), `retry_backoff_seconds`, `max_observation_chars` (1500), `history_ttl_seconds` (600) |
 | `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (512) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
+| `[memory]` | `enabled` (true), `path`, `record_history` (true), `history_days` (30), `max_history` (1000), `share_preferences` (true) |
+| `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
 
-Files: config, models, the saved prompt state (`prompt-cache/`) and the browser
-profile in `~/Library/Application Support/Jarvis/`; logs (`jarvis.log`, `audit.jsonl`,
-`service.log`), background-process output and organize undo lists in
-`~/Library/Logs/Jarvis/`; the agent in
-`~/Library/LaunchAgents/local.jarvis.assistant.plist`.
+An existing `config.toml` that lists `enabled_tools` keeps its list: add
+`"memory.*"` to it for the memory tools (the `jarvis memory` commands work
+either way).
+
+Files: config, models (incl. the speech model), the memory database
+(`memory.sqlite3`), the saved prompt state (`prompt-cache/`) and the browser
+profile in `~/Library/Application Support/Jarvis/`; logs (`jarvis.log`,
+`audit.jsonl`, `service.log`, `voice-worker.log` from the last voice request),
+background-process output and organize undo lists in `~/Library/Logs/Jarvis/`;
+the agent in `~/Library/LaunchAgents/local.jarvis.assistant.plist`.
 
 ## Performance and trade-offs
 
@@ -295,6 +429,11 @@ context 4096, Metal, model in the worker process. Reproduce with
 | Idle, model not loaded (60 s sample) | 0.004% | 0.08 | 51 MB |
 | Idle, model loaded in worker | 0.02% | 0.4–0.7 | 740–870 MB (service + worker) |
 | After the idle unload (300 s) | 0.002% | 0.05 | 49 MB |
+| Phase 5 re-measurement: after memory/workflow requests and the idle unload (60 s sample) | 0.000% | 0.00 | 55 MB |
+
+Phase 5 adds ~6 MB once the memory database has been used (an open SQLite
+connection and the memory/voice modules). Push-to-talk and spoken replies add
+nothing while idle: their processes exist only during a request.
 
 **Requests** (Phase 4 prompt: 25 tools, ~1,770 tokens):
 
@@ -355,6 +494,21 @@ already in memory takes 2.27 s. Shorter replies are faster (1.4–1.6 s).
   one; the worker grew to 3.9–4.2 GB; and the first request after a restart
   still took 2.8 s.
 
+**Memory and voice** (Phase 5, same Mac):
+
+| | Measured |
+|---|---|
+| Remember / recall / forget a preference, list workflows (rule-based) | instant, no model |
+| Replaying a saved workflow (`run the … workflow`, one app step, via the service) | 0.21 s |
+| Task-history write per request | one small SQLite insert; database 32 KB after a few dozen tasks |
+| Push-to-talk worker per request (CPU whisper, 3 s of speech, after recording) | 0.44 s wall, 0.78 CPU-s, 213 MB peak, all freed on exit |
+| Transcription alone, base.en q5_1 | 0.2 s on the CPU; 0.08 s with `stt_use_gpu` (~7 s once after a Metal shader-cache reset) |
+| Push-to-talk / spoken replies while idle | no process, no listening, no cost: the worker and `say` exist only during a request |
+| Accuracy (synthesized test commands, `say` voice) | 6/6 transcribed exactly ("open my Stock Price Predictor project and run it") |
+
+Real-voice accuracy depends on your microphone and accent, and wasn't measured
+with a live microphone (see Known limitations).
+
 **Battery:** not measured directly. Proxies are CPU time and wakeups (the basis
 of macOS Energy Impact). A planning round uses ~0.4–0.8 CPU-seconds with Metal.
 GPU energy isn't included in CPU time. For package power, run
@@ -369,20 +523,26 @@ GPU energy isn't included in CPU time. For package power, run
 | `llama-cpp-python>=0.3.36,<0.4` | Local inference (compiled with Metal) | `llm` extra |
 | `playwright>=1.60,<2` | Browser automation (drives installed Chrome; no browser download) | `browser` extra |
 | `pyobjc-framework-Vision>=11,<13` | On-device OCR for the screen tools | `screen` extra |
+| `pywhispercpp>=1.5,<2` | On-device speech-to-text (whisper.cpp; wheel includes the library) | `voice` extra |
+| `sounddevice>=0.5,<0.6` | Microphone capture (PortAudio, bundled in the wheel) | `voice` extra |
+| `numpy>=2,<3` | Audio buffers for the voice worker | `voice` extra |
 | `pytest`, `ruff`, `mypy` | Tests, lint/format, strict type checking | `dev` extra |
 
 Everything else is standard library or a system tool/framework: Carbon (shortcut),
-libproc (process stats), Spotlight (`mdfind`), `screencapture`, `launchctl`.
+libproc (process stats), Spotlight (`mdfind`), `screencapture`, `launchctl`,
+`say` (spoken replies), SQLite (memory).
 Tested with Python 3.14.3 (Homebrew, arm64), llama-cpp-python 0.3.36,
-Playwright 1.63.0 with Chrome 155, PyObjC 12.2.2 on macOS 27.0.1.
+Playwright 1.63.0 with Chrome 155, PyObjC 12.2.2, pywhispercpp 1.5.1,
+sounddevice 0.5.6 on macOS 27.0.1.
 
 ## Testing
 
 ```bash
-pytest                                       # 552 tests, ~10 s: unit, fake platform, real processes,
+pytest                                       # 636 tests, ~12 s: unit, fake platform, real processes,
                                              #   headless Chrome on a local site, Vision OCR (no model)
-JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real model incl. find→inspect→run a project and
-                                             #   the prompt cache across reloads (~60 s)
+JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real models: find→inspect→run a project, the prompt
+                                             #   cache across reloads, remembered preferences,
+                                             #   whisper on synthesized speech (~70 s)
 JARVIS_RUN_GUI_TESTS=1 pytest -m gui         # Calculator, service dialog + SIGTERM, real screen capture
 ruff check src tests && ruff format --check src tests
 mypy                                         # strict mode
@@ -394,6 +554,10 @@ mypy                                         # strict mode
 * Terminal tests run real processes, browser tests drive real headless Chrome
   against a local test site, and service tests start real `jarvis daemon`
   processes and stop them with real signals.
+* Memory tests use a temporary database (a fixture redirects the default path,
+  so tests can never touch yours). Voice tests use a scripted worker process and
+  a fake `say`; the real-model voice test feeds `say`-synthesized WAV files to
+  the real worker. No test opens the microphone or plays audio.
 
 ## Known limitations
 
@@ -405,6 +569,14 @@ mypy                                         # strict mode
 * OCR can't always tell a lone `0` from `O` in the system font.
 * The context window (4096 tokens) bounds how much tool output the model sees
   per request. Older results are shortened automatically.
+* Push-to-talk wasn't tested with a live microphone. The recording code is
+  exercised with scripted workers and transcription with synthesized speech,
+  but macOS may refuse the microphone to the background service (see
+  [Voice](#voice)); `jarvis listen` in a terminal is the fallback.
+* The default speech model (`base.en`) understands English only. Set
+  `[voice] stt_model_path` to a multilingual whisper.cpp model and `language`
+  for others.
+* Spoken replies are a one-line summary, by design.
 * Not tested on Windows or on Intel Macs.
 
 ## Troubleshooting
@@ -420,21 +592,32 @@ mypy                                         # strict mode
 * **"Background Items Added" notice:** that's macOS reporting the Launch Agent.
   It appears as Python, because Jarvis runs as a Python program rather than an
   installed app.
+* **"The microphone gave only silence":** allow the microphone for your
+  terminal app (`jarvis listen`) or Python (the service) in System Settings →
+  Privacy & Security → Microphone, and check the input level in Sound settings.
+  `jarvis voice listen` tests it without running anything.
+* **"I didn't hear anything":** nothing louder than the room noise was
+  recorded within 8 s. Speak closer, or raise `[voice] max_record_seconds`.
+* **A configured voice isn't used:** `say` silently falls back to the system
+  voice for unknown names; `jarvis doctor` checks the name against
+  `jarvis voice voices`.
+* **Forget everything:** `jarvis memory clear` (asks first), or delete
+  `~/Library/Application Support/Jarvis/memory.sqlite3`.
 * **Logs:** `~/Library/Logs/Jarvis/jarvis.log` (application), `service.log`
   (launchd stdout/stderr), `audit.jsonl` (every action), `processes/`
-  (background command output).
+  (background command output), `voice-worker.log` (last voice request).
 
 ## Models
 
 See [`models/README.md`](models/README.md). The default model is
-**Qwen3-4B-Instruct-2507 Q4_K_M** (2.5 GB, Apache-2.0), pinned by revision and
-SHA-256.
+**Qwen3-4B-Instruct-2507 Q4_K_M** (2.5 GB, Apache-2.0); the optional speech
+model is **Whisper base.en q5_1** (60 MB, MIT, whisper.cpp). Both are pinned by
+revision and SHA-256.
 
 ## Roadmap
 
-* **Phase 5:** Optional push-to-talk input, spoken replies, SQLite memory
-  (preferences, task history, reusable workflows) with inspect/export/clear
-  controls.
+* **Phase 5 (done):** SQLite memory (preferences, task history, workflows)
+  with inspect/export/clear, spoken replies, push-to-talk voice input.
 * **Phase 6:** Windows adapters ([`docs/WINDOWS.md`](docs/WINDOWS.md)),
   optional menu-bar UI.
   Packaging as an `.app` stays optional: Jarvis keeps working without
@@ -443,8 +626,8 @@ SHA-256.
 ## Windows
 
 Not supported yet, and not tested on Windows. The platform boundary and plan
-(service, shortcut, event loop, and the Phase 4 tools) are in
-[`docs/WINDOWS.md`](docs/WINDOWS.md).
+(service, shortcut, event loop, the Phase 4 tools, and Phase 5 memory and
+voice) are in [`docs/WINDOWS.md`](docs/WINDOWS.md).
 
 ## Licence
 
