@@ -57,6 +57,9 @@ def _load_model(settings: dict[str, Any], box: dict[str, Any]) -> None:
 
         box["model"] = Model(
             settings["model_path"],
+            # CPU by default: ~0.2 s per command on an M4, and no Metal shader
+            # compile (~7 s whenever macOS's shader cache has been reset).
+            context_params={"use_gpu": bool(settings.get("use_gpu", False))},
             redirect_whispercpp_logs_to=None,
             print_progress=False,
             print_realtime=False,

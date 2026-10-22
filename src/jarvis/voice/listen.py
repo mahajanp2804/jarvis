@@ -47,6 +47,7 @@ class VoiceSettings:
     max_seconds: float = 15.0
     silence_seconds: float = 1.5
     threads: int | None = None
+    use_gpu: bool = False
 
 
 class Recording:
@@ -160,6 +161,7 @@ class VoiceInput:
             "max_seconds": self.settings.max_seconds,
             "silence_seconds": self.settings.silence_seconds,
             "threads": self.settings.threads,
+            "use_gpu": self.settings.use_gpu,
             "audio_file": str(audio_file) if audio_file else None,
         }
         stderr: Any = subprocess.DEVNULL

@@ -1,10 +1,11 @@
 """The on-device speech-to-text model (whisper.cpp), pinned like the language model.
 
 Default: Whisper base.en, 5-bit quantised (60 MB). Measured on an M4 with
-synthesized commands: every test sentence transcribed exactly, in ~0.07 s per
-sentence once loaded; loading takes ~0.07 s (the very first load after
-installing compiles Metal shaders, ~7 s). Other whisper.cpp ``ggml-*.bin``
-models work via ``[voice] stt_model_path`` but can't be verified by Jarvis.
+synthesized commands: every test sentence transcribed exactly, in ~0.2 s per
+sentence on the CPU (0.08 s with ``[voice] stt_use_gpu``, whose first use after
+a macOS shader-cache reset compiles Metal shaders for ~7 s); loading takes
+~0.07 s. Other whisper.cpp ``ggml-*.bin`` models work via
+``[voice] stt_model_path`` but can't be verified by Jarvis.
 """
 
 from __future__ import annotations

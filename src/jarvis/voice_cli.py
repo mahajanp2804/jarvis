@@ -79,6 +79,7 @@ def voice_input(config: JarvisConfig) -> VoiceInput:
             language=voice.language,
             max_seconds=voice.max_record_seconds,
             silence_seconds=voice.silence_seconds,
+            use_gpu=voice.stt_use_gpu,
         ),
         log_file=config.general.resolved_log_dir() / "voice-worker.log",
     )

@@ -371,6 +371,9 @@ class VoiceConfig(_Section):
     max_record_seconds: float = Field(default=15.0, ge=2, le=60)
     # Stop recording after this much quiet following speech (0 = only when told).
     silence_seconds: float = Field(default=1.5, ge=0, le=10)
+    # Transcribe on the GPU (Metal): 0.08 s instead of 0.2 s per command on an M4,
+    # but the first use after macOS resets its shader cache takes ~7 s.
+    stt_use_gpu: bool = False
 
     @field_validator("rate")
     @classmethod
@@ -567,6 +570,8 @@ language = "en"
 max_record_seconds = 15.0
 # Stop after this much quiet following speech (0 = only when you press again).
 silence_seconds = 1.5
+# Metal: 0.08 s instead of 0.2 s per command, but ~7 s after a shader-cache reset.
+stt_use_gpu = false
 """
 
 
