@@ -13,6 +13,7 @@ Examples::
     jarvis doctor
     jarvis service install          # start at login; shortcut ⌃⌥⌘J opens Jarvis
     jarvis ask "open my browser"    # send a request to the running service
+    jarvis shell --speak            # replies are also spoken (on-device)
     jarvis memory show              # what Jarvis remembers (also: export, clear)
     jarvis workflow run "morning setup"   # replay a saved workflow
 
@@ -30,7 +31,7 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 
-from jarvis import __version__, memory_cli, model_cli, service_cli
+from jarvis import __version__, memory_cli, model_cli, service_cli, voice_cli
 from jarvis.agent.orchestrator import Reply, format_result
 from jarvis.ai.model_files import check_model_file
 from jarvis.ai.registry import spec_for_filename
@@ -41,8 +42,9 @@ from jarvis.errors import JarvisError
 from jarvis.logging_setup import configure_logging
 from jarvis.memory.store import Section
 from jarvis.platforms import get_platform
-from jarvis.platforms.base import DiagnosticCheck
+from jarvis.platforms.base import DiagnosticCheck, PlatformAdapter
 from jarvis.runtime.permissions import InteractiveConfirmer, PolicyEngine
+from jarvis.voice.speech import SpeechOutput, spoken_text
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -85,10 +87,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"jarvis {__version__}")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
-    run = sub.add_parser("run", parents=[common], help='run one request, e.g. "open Safari"')
+    speak = argparse.ArgumentParser(add_help=False)
+    speak.add_argument(
+        "--speak", action="store_true", help="say a short summary of each reply (on-device)"
+    )
+    run = sub.add_parser("run", parents=[common, speak], help='run one request, e.g. "open Safari"')
     run.add_argument("text", nargs="+", help="the request")
 
-    sub.add_parser("shell", parents=[common], help="interactive prompt ('help', 'exit')")
+    sub.add_parser("shell", parents=[common, speak], help="interactive prompt ('help', 'exit')")
 
     apps = sub.add_parser("apps", parents=[common], help="list, open or quit applications")
     apps_sub = apps.add_subparsers(dest="apps_command", required=True, metavar="ACTION")
@@ -176,6 +182,15 @@ def build_parser() -> argparse.ArgumentParser:
     memory_forget = memory_sub.add_parser("forget", parents=[common], help="forget a preference")
     memory_forget.add_argument("name", nargs="+")
 
+    voice = sub.add_parser("voice", parents=[common], help="spoken replies: voices and a test")
+    voice_sub = voice.add_subparsers(dest="voice_command", required=True, metavar="ACTION")
+    voice_list = voice_sub.add_parser("voices", parents=[common], help="list installed voices")
+    voice_list.add_argument("--language", help='e.g. "en" or "en_GB"')
+    voice_say = voice_sub.add_parser(
+        "say", parents=[common], help="say a sentence with the configured voice"
+    )
+    voice_say.add_argument("text", nargs="+")
+
     workflow = sub.add_parser(
         "workflow", parents=[common], help="list, show, run or delete saved workflows"
     )
@@ -246,7 +261,32 @@ def _show_progress(message: str) -> None:
     print(f"… {message}", file=sys.stderr, flush=True)
 
 
-def _run_shell(runtime: Runtime, cancel: threading.Event) -> int:
+def _cli_speaker(
+    config: JarvisConfig, platform: PlatformAdapter, args: argparse.Namespace
+) -> SpeechOutput | None:
+    if not (getattr(args, "speak", False) or config.voice.speak_replies):
+        return None
+    try:
+        speaker = voice_cli.speaker_for(config, platform)
+        speaker.check()
+    except JarvisError as exc:
+        print(f"Spoken replies unavailable: {exc.message}", file=sys.stderr)
+        return None
+    return speaker
+
+
+def _speak(speaker: SpeechOutput | None, reply: Reply, config: JarvisConfig) -> None:
+    if speaker is None:
+        return
+    try:
+        speaker.speak(spoken_text(reply, config.voice.max_spoken_chars))
+    except JarvisError as exc:
+        log.warning("Spoken reply failed: %s", exc.message)
+
+
+def _run_shell(
+    runtime: Runtime, cancel: threading.Event, speaker: SpeechOutput | None = None
+) -> int:
     mode = " [dry run]" if runtime.config.general.dry_run else ""
     print(f"Jarvis {__version__}{mode}. Type 'help' for commands, 'exit' to leave.")
     while True:
@@ -264,8 +304,12 @@ def _run_shell(runtime: Runtime, cancel: threading.Event) -> int:
             runtime.orchestrator.clear_history()
             print("Conversation history cleared.")
             continue
+        if speaker is not None:
+            speaker.stop()
         try:
-            print(runtime.orchestrator.handle(line, source="shell").text)
+            reply = runtime.orchestrator.handle(line, source="shell")
+            print(reply.text)
+            _speak(speaker, reply, runtime.config)
         except KeyboardInterrupt:
             print("\nCancelled.")
             cancel.clear()  # the interrupt only cancels the current request
@@ -343,6 +387,13 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
         checks.extend(platform.diagnostics())
         if PolicyEngine(config.policy).is_enabled("browser.open"):
             checks.append(_browser_check(config))
+        if config.voice.speak_replies:
+            try:
+                voice_cli.speaker_for(config, platform).check()
+                name = config.voice.voice or "system voice"
+                checks.append(DiagnosticCheck("Spoken replies", True, f"on ({name})"))
+            except JarvisError as exc:
+                checks.append(DiagnosticCheck("Spoken replies", False, exc.message))
         if PolicyEngine(config.policy).is_enabled("screen.read_text"):
             allowed = platform.screen_capture_allowed()
             detail = {
@@ -449,6 +500,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         _print_error(exc)
         return EXIT_ERROR
 
+    if args.command == "voice":
+        if args.voice_command == "voices":
+            return voice_cli.voices(config, platform, args.language)
+        return voice_cli.say(config, platform, " ".join(args.text))
     if args.command == "daemon":
         return service_cli.run_daemon(config, platform, headless=args.headless)
     if args.command == "service":
@@ -471,13 +526,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     cancel = threading.Event()
     runtime = build_runtime(config, platform, InteractiveConfirmer(), cancel_event=cancel)
     runtime.orchestrator.on_progress = _show_progress
+    speaker = _cli_speaker(config, platform, args) if args.command in {"run", "shell"} else None
     try:
         if args.command == "run":
-            code = _reply_exit(runtime.orchestrator.handle(" ".join(args.text)))
+            reply = runtime.orchestrator.handle(" ".join(args.text))
+            code = _reply_exit(reply)
+            _speak(speaker, reply, config)
+            if speaker is not None:
+                speaker.wait()
             _keep_background_processes(runtime)
             return code
         if args.command == "shell":
-            return _run_shell(runtime, cancel)
+            return _run_shell(runtime, cancel, speaker)
         if args.command == "workflow":  # run
             code = _reply_exit(runtime.orchestrator.run_workflow(" ".join(args.name)))
             _keep_background_processes(runtime)
@@ -501,6 +561,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\nInterrupted.", file=sys.stderr)
         return EXIT_INTERRUPTED
     finally:
+        if speaker is not None:
+            speaker.stop()
         runtime.close()
 
 

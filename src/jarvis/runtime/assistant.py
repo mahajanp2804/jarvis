@@ -3,6 +3,9 @@
     shortcut -> prompt (main thread) -> plan + execute (worker thread)
              -> clarifying question? ask, continue -> show reply if useful -> idle
 
+With spoken replies on, a short summary is said as the reply appears;
+pressing the shortcut again stops it.
+
 Requests run on a single worker thread, so the main thread stays free for the
 run loop, dialogs and signals. Only one request runs at a time. Confirmations
 requested by the dispatcher are shown on the main thread through
@@ -19,8 +22,10 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from jarvis.agent.orchestrator import Orchestrator, Reply
 from jarvis.agent.planner import PlanAction
 from jarvis.api.schemas import ToolStatus
+from jarvis.errors import JarvisError
 from jarvis.runtime.event_loop import EventLoop
 from jarvis.ui.base import UserInterface
+from jarvis.voice.speech import DEFAULT_SPOKEN_CHARS, SpeechOutput, spoken_text
 
 log = logging.getLogger(__name__)
 
@@ -77,8 +82,12 @@ class Assistant:
         *,
         show_success: bool = False,
         max_follow_ups: int = 3,
+        speaker: SpeechOutput | None = None,
+        spoken_chars: int = DEFAULT_SPOKEN_CHARS,
     ) -> None:
         self._orchestrator = orchestrator
+        self._speaker = speaker
+        self._spoken_chars = spoken_chars
         self._ui = ui
         self._loop = loop
         self._show_success = show_success
@@ -97,6 +106,8 @@ class Assistant:
         """Shortcut pressed (runs on the main thread)."""
         if self._loop.stopping:
             return
+        if self._speaker is not None:
+            self._speaker.stop()  # the shortcut interrupts a spoken reply
         if self.busy:
             self._ui.show(TITLE, "Still working on the previous request…")
             return
@@ -116,6 +127,8 @@ class Assistant:
         with self._lock:
             current = self._current
         self._executor.shutdown(wait=False, cancel_futures=True)
+        if self._speaker is not None:
+            self._speaker.stop()
         if current is None:
             return True
         try:
@@ -128,6 +141,14 @@ class Assistant:
         return True
 
     # -- worker thread ---------------------------------------------------------------
+
+    def _say(self, reply: Reply) -> None:
+        if self._speaker is None:
+            return
+        try:
+            self._speaker.speak(spoken_text(reply, self._spoken_chars))
+        except JarvisError as exc:
+            log.warning("Spoken reply failed: %s", exc.message)
 
     def _ask(self, question: str) -> str | None:
         def prompt() -> str | None:
@@ -145,11 +166,14 @@ class Assistant:
                 and follow_ups < self._max_follow_ups
                 and not self._loop.stopping
             ):
+                self._say(reply)
                 answer = self._ask(reply.text)
                 if not answer:
                     break
                 reply = self._orchestrator.handle(answer, source="service")
                 follow_ups += 1
+            if interactive and not self._loop.stopping:
+                self._say(reply)
             if (
                 interactive
                 and not self._loop.stopping

@@ -7,8 +7,8 @@ Windows).
 
 Implemented so far: application control, diagnostics, process stats (Phase 1-2),
 and the background-service hooks (Phase 3): event loop, global hotkey, dialogs
-and service management. Speech, file and browser adapters are added in the
-phases that implement them.
+and service management, screen capture and text recognition (Phase 4), and
+speech (Phase 5).
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from jarvis.runtime.event_loop import EventLoop
     from jarvis.runtime.hotkeys import HotkeyListener
     from jarvis.ui.base import UserInterface
+    from jarvis.voice.speech import SpeechOutput
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,12 @@ class PlatformAdapter(ABC):
     def recognize_text(self, image: Path) -> list[TextLine]:
         """On-device text recognition, lines ordered top to bottom."""
         raise UnsupportedPlatformError(f"Text recognition isn't implemented on {self.name}.")
+
+    # -- speech (Phase 5, optional) ---------------------------------------------------
+
+    def speech_output(self, voice: str | None = None, rate: int | None = None) -> SpeechOutput:
+        """On-device text-to-speech (nothing runs until something is spoken)."""
+        raise UnsupportedPlatformError(f"Spoken replies aren't implemented on {self.name}.")
 
     # -- background service (Phase 3) -------------------------------------------------
 

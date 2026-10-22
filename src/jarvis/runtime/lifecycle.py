@@ -39,6 +39,7 @@ from jarvis.runtime.control import ControlServer
 from jarvis.runtime.event_loop import EventLoop, SignalBridge
 from jarvis.runtime.hotkeys import Hotkey, HotkeyError, HotkeyListener
 from jarvis.ui.base import HeadlessUI, UserInterface
+from jarvis.voice.speech import SpeechOutput
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +153,12 @@ class Daemon:
             )
             self.runtime = runtime
             assistant = Assistant(
-                runtime.orchestrator, ui, loop, show_success=self.config.service.show_success
+                runtime.orchestrator,
+                ui,
+                loop,
+                show_success=self.config.service.show_success,
+                speaker=self._speaker(),
+                spoken_chars=self.config.voice.max_spoken_chars,
             )
             self.assistant = assistant
             control = ControlServer(self.paths.socket, self.handle_control)
@@ -222,6 +228,16 @@ class Daemon:
         return {"ok": False, "error": f"unknown command {command!r}"}
 
     # -- internals ---------------------------------------------------------------------
+
+    def _speaker(self) -> SpeechOutput | None:
+        voice = self.config.voice
+        if not voice.speak_replies:
+            return None
+        try:
+            return self.platform.speech_output(voice.voice or None, voice.rate or None)
+        except JarvisError as exc:  # keep running without speech
+            log.error("Spoken replies unavailable: %s", exc.message)
+            return None
 
     def _register_hotkey(self, loop: EventLoop, assistant: Assistant) -> HotkeyListener | None:
         try:

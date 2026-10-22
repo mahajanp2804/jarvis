@@ -343,6 +343,26 @@ class MemoryConfig(_Section):
         return self.path or default_memory_path()
 
 
+class VoiceConfig(_Section):
+    """Spoken replies (on-device text-to-speech). Off by default."""
+
+    # Say a short summary of each reply (shortcut dialog, `jarvis shell`, `jarvis run`).
+    speak_replies: bool = False
+    # Installed system voice, e.g. "Samantha"; empty = the system voice.
+    voice: str = Field(default="", max_length=100)
+    # Words per minute; 0 = the system default.
+    rate: int = Field(default=0, ge=0, le=500)
+    # Longest summary spoken per reply.
+    max_spoken_chars: int = Field(default=300, ge=40, le=2000)
+
+    @field_validator("rate")
+    @classmethod
+    def _sensible_rate(cls, value: int) -> int:
+        if 0 < value < 80:
+            raise ValueError("rate must be 0 (system default) or 80-500 words per minute")
+        return value
+
+
 class JarvisConfig(_Section):
     """Root configuration object."""
 
@@ -356,6 +376,7 @@ class JarvisConfig(_Section):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
 
 
 EXAMPLE_CONFIG_TOML = """\
@@ -486,6 +507,16 @@ history_days = 30
 max_history = 1000
 # Give remembered preferences to the model so "open my editor" works.
 share_preferences = true
+
+[voice]
+# Say a short summary of each reply (on-device; macOS `say`). Off by default.
+# Speech stops when you press the shortcut again. `jarvis voice voices` lists voices.
+speak_replies = false
+# Empty = the system voice (System Settings > Accessibility > Spoken Content).
+voice = ""
+# Words per minute; 0 = system default.
+rate = 0
+max_spoken_chars = 300
 """
 
 

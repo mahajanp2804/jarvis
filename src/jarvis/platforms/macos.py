@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from jarvis.runtime.event_loop import EventLoop
     from jarvis.runtime.hotkeys import HotkeyListener
     from jarvis.ui.base import UserInterface
+    from jarvis.voice.speech import SpeechOutput
 
 log = logging.getLogger(__name__)
 
@@ -464,6 +465,11 @@ class MacOSPlatform(PlatformAdapter):
             reason = error.localizedDescription() if error is not None else "unknown error"
             raise ToolExecutionError(f"Could not move {path.name} to the Trash: {reason}")
         return Path(str(result_url.path())) if result_url is not None else None
+
+    def speech_output(self, voice: str | None = None, rate: int | None = None) -> SpeechOutput:
+        from jarvis.platforms.macos_speech import SaySpeaker
+
+        return SaySpeaker(voice, rate)
 
     def event_loop(self, *, headless: bool) -> EventLoop:
         if headless:
