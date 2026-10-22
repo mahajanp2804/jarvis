@@ -1,0 +1,67 @@
+# Lint, type-check and test on every push and pull request.
+#
+# macOS (Apple Silicon) is the supported platform: the full suite runs there,
+# including headless Chrome, Apple Vision OCR and read-only app discovery, on
+# the oldest and newest supported Python. Linux has no adapter yet: that job
+# checks the platform boundary (the shared core imports and its tests pass
+# without macOS) and is the first step of the Windows roadmap (docs/WINDOWS.md).
+#
+# Not run here: real-model tests (2.5 GB model, JARVIS_RUN_MODEL_TESTS=1) and GUI
+# tests (JARVIS_RUN_GUI_TESTS=1). llama-cpp-python isn't installed: its tests
+# skip themselves, and the suite uses a scripted fake model.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS (Python ${{ matrix.python }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev,browser,screen,voice]"
+      - name: Lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+      - name: Type-check
+        run: mypy
+      - name: Test
+        run: pytest
+      - name: Package
+        run: scripts/check_package.sh "$(command -v python)"
+
+  linux:
+    name: Linux core (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Test
+        run: pytest
+      - name: Package
+        run: scripts/check_package.sh "$(command -v python)"
