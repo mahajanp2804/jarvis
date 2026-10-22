@@ -52,6 +52,24 @@ _FIND = re.compile(
 )
 
 
+# Memory: "remember that my editor is VS Code", "forget my editor", "what do you remember".
+_REMEMBER = re.compile(
+    r"^remember\s+(?:that\s+)?(?P<name>.+?)\s+(?:is|are)\s+(?P<value>.+)$", re.IGNORECASE
+)
+_FORGET = re.compile(r"^forget\s+(?:about\s+)?(?P<name>.+)$", re.IGNORECASE)
+_RECALL = re.compile(
+    r"^(?:what do you (?:remember|know)(?: about me)?|what are my preferences|"
+    r"(?:list|show)(?: my)? (?:preferences|memory))$",
+    re.IGNORECASE,
+)
+_MEMORY_NAME = re.compile(r"^(?:my|the)\s+", re.IGNORECASE)
+
+
+def _memory_name(raw: str) -> str | None:
+    name = _MEMORY_NAME.sub("", raw.strip())
+    return None if not name or _PRONOUN.match(name) or name.lower() in {"i", "you"} else name
+
+
 def _clean_app_name(raw: str) -> str | None:
     """Strip filler words; return ``None`` if the target is not an application."""
     if _NOT_AN_APP.search(raw) or _PRONOUN.match(raw.strip()):
@@ -76,6 +94,20 @@ def route(text: str) -> ToolCall | None:
 
     if match := _FIND.match(command):
         return ToolCall(tool="apps.list", arguments={"query": match.group("query").strip(" \"'")})
+
+    if _RECALL.match(command):
+        return ToolCall(tool="memory.list")
+
+    if match := _REMEMBER.match(command):
+        name = _memory_name(match.group("name"))
+        value = match.group("value").strip(" \"'")
+        if name and value:
+            return ToolCall(tool="memory.remember", arguments={"name": name, "value": value})
+        return None
+
+    if match := _FORGET.match(command):
+        name = _memory_name(match.group("name"))
+        return ToolCall(tool="memory.forget", arguments={"name": name}) if name else None
 
     if match := _OPEN.match(command):
         name = _clean_app_name(match.group("name"))

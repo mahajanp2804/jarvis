@@ -13,6 +13,14 @@ from jarvis.config import JarvisConfig
 from tests.fakes import FakeLLM, FakePlatform, ScriptedConfirmer
 
 
+@pytest.fixture(autouse=True)
+def private_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Tests never read or write the real memory database."""
+    path = tmp_path / "memory" / "memory.sqlite3"
+    monkeypatch.setattr("jarvis.config.default_memory_path", lambda: path)
+    return path
+
+
 @pytest.fixture
 def fake_platform() -> FakePlatform:
     return FakePlatform()
@@ -39,6 +47,7 @@ def make_runtime(
         ai: dict[str, object] | None = None,
         files: dict[str, object] | None = None,
         terminal: dict[str, object] | None = None,
+        memory: dict[str, object] | None = None,
         cancel_event: threading.Event | None = None,
     ) -> tuple[Runtime, ScriptedConfirmer]:
         config = JarvisConfig.model_validate(
@@ -54,6 +63,7 @@ def make_runtime(
                 "agent": {"retry_backoff_seconds": 0.0},
                 "files": files or {},
                 "terminal": terminal or {},
+                "memory": memory or {},
             }
         )
         confirmer = ScriptedConfirmer(confirm)

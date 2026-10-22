@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -163,9 +164,9 @@ def test_busy_assistant_says_so(make_runtime: MakeRuntime) -> None:
     assistant, loop, runtime = make(make_runtime, ui)
     original = runtime.orchestrator.handle
 
-    def slow(text: str) -> Reply:
+    def slow(text: str, **kwargs: Any) -> Reply:
         gate.wait(5)
-        return original(text)
+        return original(text, **kwargs)
 
     runtime.orchestrator.handle = slow  # type: ignore[method-assign]
 

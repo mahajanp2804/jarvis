@@ -10,6 +10,9 @@ Safety properties:
   up with a clear error. It never guesses.
 * The plan is only a proposal. Every step is executed by the dispatcher, which
   re-validates arguments and applies the permission policy and confirmations.
+* Remembered preferences go in a second system message after the system
+  prompt, framed as facts (not instructions or permissions). Keeping them out
+  of the system prompt keeps its saved prompt-cache state valid.
 * Multi-step tasks run in rounds (see the orchestrator): earlier plans and the
   results of their steps are replayed to the model as data, never as
   instructions. When the prompt gets close to the model's context window,
@@ -118,11 +121,6 @@ def build_plan_model(specs: Sequence[ToolSpec], max_steps: int) -> type[BaseMode
         message=(str, Field(min_length=1, max_length=_MAX_MESSAGE)),
         steps=(list[step_type], Field(default_factory=list, max_length=max_steps)),
     )
-
-
-# llama.cpp turns a string maxLength into one grammar rule per character, so big
-# limits (files.create content: 100,000) produce megabyte grammars that crash it.
-GRAMMAR_MAX_LENGTH = 200
 
 
 # llama.cpp turns a string maxLength into one grammar rule per character, so big
@@ -283,11 +281,13 @@ class Planner:
         settings: PlannerSettings,
         *,
         app_names: Callable[[], Sequence[str]] | None = None,
+        context: Callable[[], str | None] | None = None,
     ) -> None:
         self._models = models
         self._tools = tools
         self._settings = settings
         self._app_names = app_names
+        self._context = context  # e.g. remembered preferences
 
     def system_prompt(self, specs: Sequence[ToolSpec]) -> str:
         names = {s.name for s in specs}
@@ -321,11 +321,11 @@ class Planner:
         specs = list(self._tools())
         plan_model = build_plan_model(specs, self._settings.max_steps)
         schema = grammar_schema(plan_model.model_json_schema())
-        messages = self._fit(
-            [{"role": "system", "content": self.system_prompt(specs)}, *history],
-            request,
-            turns,
-        )
+        head: list[ChatMessage] = [{"role": "system", "content": self.system_prompt(specs)}]
+        context = self._context() if self._context is not None else None
+        if context:
+            head.append({"role": "system", "content": context})
+        messages = self._fit(head, list(history), request, turns)
 
         completions: list[Completion] = []
         last_error = ""
@@ -365,15 +365,22 @@ class Planner:
         )
 
     def _fit(
-        self, prefix: list[ChatMessage], request: str, turns: Sequence[Turn]
+        self,
+        head: list[ChatMessage],
+        history: list[ChatMessage],
+        request: str,
+        turns: Sequence[Turn],
     ) -> list[ChatMessage]:
-        """Build the messages, shortening older results to fit the context window."""
+        """Build the messages, shortening older results to fit the context window.
+
+        ``head`` (system prompt, remembered preferences) is always kept.
+        """
         budget = int(
             (self._settings.context_tokens - self._settings.max_tokens - 64) * _CHARS_PER_TOKEN
         )
 
         def build(full_from: int) -> list[ChatMessage]:
-            messages: list[ChatMessage] = [*prefix, {"role": "user", "content": request}]
+            messages: list[ChatMessage] = [*head, *history, {"role": "user", "content": request}]
             for index, turn in enumerate(turns):
                 observation = turn.observation if index >= full_from else turn.observation_short
                 messages.append({"role": "assistant", "content": turn.plan_json})
@@ -386,8 +393,8 @@ class Planner:
                 if full_from:
                     log.info("Shortened the results of %d earlier round(s) to fit", full_from)
                 return messages
-        while len(prefix) > 1:  # drop the oldest conversation history, keep the system prompt
-            prefix = [prefix[0], *prefix[3:]]
+        while history:  # drop the oldest exchange of the conversation history
+            history = history[2:]
             messages = build(len(turns))
             if sum(len(m["content"]) for m in messages) <= budget:
                 return messages

@@ -6,7 +6,9 @@ here, so they share exactly the same policy and audit behaviour.
 
 from __future__ import annotations
 
+import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from jarvis.agent.orchestrator import Orchestrator
@@ -18,6 +20,8 @@ from jarvis.ai.prompt_cache import PromptCache
 from jarvis.ai.subprocess_backend import SubprocessBackend
 from jarvis.api.dispatcher import Dispatcher, RetryPolicy
 from jarvis.config import AIConfig, JarvisConfig
+from jarvis.errors import JarvisError
+from jarvis.memory.store import MemoryStore
 from jarvis.paths import config_dir
 from jarvis.platforms.base import PlatformAdapter
 from jarvis.runtime.audit import AuditLog
@@ -26,10 +30,13 @@ from jarvis.tools.applications import AppCatalog, ApplicationTools
 from jarvis.tools.base import ToolRegistry, ToolSpec
 from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_available
 from jarvis.tools.files import FileTools
+from jarvis.tools.memory import MemoryTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
 from jarvis.tools.screen import ScreenTools
 from jarvis.tools.terminal import ProcessManager, TerminalTools
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,15 +54,28 @@ class Runtime:
     planner: Planner | None
     processes: ProcessManager
     browser: BrowserSession | None = None
+    memory: MemoryStore | None = None
 
     def close(self) -> None:
-        """Stop background processes and the browser, unload the model, close the audit log."""
+        """Stop background processes and the browser, unload the model, close files."""
         self.processes.shutdown()
         if self.browser is not None:
             self.browser.close()
         if self.models is not None:
             self.models.shutdown()
+        if self.memory is not None:
+            self.memory.close()
         self.audit.close()
+
+
+def build_memory(config: JarvisConfig) -> MemoryStore | None:
+    """The memory store (the file is opened on first use), or None if disabled."""
+    memory = config.memory
+    if not memory.enabled:
+        return None
+    return MemoryStore(
+        memory.resolved_path(), history_days=memory.history_days, max_history=memory.max_history
+    )
 
 
 def build_path_policy(config: JarvisConfig) -> PathPolicy:
@@ -95,6 +115,20 @@ def build_backend(ai: AIConfig) -> LLMBackend:
             else None
         ),
     )
+
+
+def _preferences_context(memory: MemoryStore | None) -> Callable[[], str | None] | None:
+    if memory is None:
+        return None
+
+    def remembered_preferences() -> str | None:
+        try:
+            return memory.planner_context()
+        except JarvisError as exc:  # a broken database must not stop planning
+            log.warning("Remembered preferences unavailable: %s", exc.message)
+            return None
+
+    return remembered_preferences
 
 
 def build_runtime(
@@ -145,6 +179,9 @@ def build_runtime(
     if playwright_available():  # optional extra: no browser tools without it
         browser = BrowserSession(config.browser, config_dir() / "browser-profile")
         specs += BrowserTools(browser, config.browser).specs()
+    memory = build_memory(config)
+    if memory is not None:
+        specs += MemoryTools(memory).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
@@ -187,6 +224,7 @@ def build_runtime(
                 context_tokens=ai.context_length,
             ),
             app_names=permitted_app_names if ai.include_app_names else None,
+            context=_preferences_context(memory) if config.memory.share_preferences else None,
         )
 
     return Runtime(
@@ -200,6 +238,7 @@ def build_runtime(
             history_ttl_seconds=config.agent.history_ttl_seconds,
             max_rounds=config.agent.max_rounds,
             max_observation_chars=config.agent.max_observation_chars,
+            memory=memory if config.memory.record_history else None,
         ),
         catalog=catalog,
         audit=audit,
@@ -207,4 +246,5 @@ def build_runtime(
         planner=planner,
         processes=processes,
         browser=browser,
+        memory=memory,
     )

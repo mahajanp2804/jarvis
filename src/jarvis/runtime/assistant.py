@@ -137,7 +137,7 @@ class Assistant:
 
     def _run(self, text: str, interactive: bool) -> Reply:
         try:
-            reply = self._orchestrator.handle(text)
+            reply = self._orchestrator.handle(text, source="service")
             follow_ups = 0
             while (
                 interactive
@@ -148,7 +148,7 @@ class Assistant:
                 answer = self._ask(reply.text)
                 if not answer:
                     break
-                reply = self._orchestrator.handle(answer)
+                reply = self._orchestrator.handle(answer, source="service")
                 follow_ups += 1
             if (
                 interactive

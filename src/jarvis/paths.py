@@ -14,7 +14,7 @@ APP_NAME = "Jarvis"
 
 
 def config_dir() -> Path:
-    """Directory holding ``config.toml`` (and, later, the SQLite memory database)."""
+    """Directory holding ``config.toml`` and the SQLite memory database."""
     home = Path.home()
     if sys.platform == "darwin":
         return home / "Library" / "Application Support" / APP_NAME
@@ -74,3 +74,8 @@ def default_prompt_cache_dir() -> Path:
         return (Path(base) if base else home / "AppData" / "Local") / APP_NAME / "prompt-cache"
     base = os.environ.get("XDG_CACHE_HOME")
     return (Path(base) if base else home / ".cache") / APP_NAME.lower() / "prompt-cache"
+
+
+def default_memory_path() -> Path:
+    """The SQLite memory database (preferences, task history, workflows)."""
+    return config_dir() / "memory.sqlite3"

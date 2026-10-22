@@ -19,16 +19,20 @@ changes something needs confirmation, so instructions hidden in that content
 can't act on their own.
 
 A short in-memory conversation history lets follow-ups like "now quit it" work.
-It is never written to disk (persistent memory arrives in Phase 5).
+It is never written to disk and is forgotten after a few idle minutes. With a
+:class:`~jarvis.memory.store.MemoryStore`, each request's outcome is also
+added to the persistent task history (redacted; see that module).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from jarvis.agent.planner import Plan, PlanAction, Planner, Turn
 from jarvis.agent.router import route
@@ -36,6 +40,9 @@ from jarvis.ai.base import ChatMessage
 from jarvis.api.dispatcher import Dispatcher, ExecutionContext
 from jarvis.api.schemas import ToolCall, ToolResult, ToolStatus
 from jarvis.errors import JarvisError
+from jarvis.memory.store import MemoryStore, make_task_record
+
+log = logging.getLogger(__name__)
 
 HELP_TEXT = """\
 Instant commands (no AI needed):
@@ -95,8 +102,10 @@ class Orchestrator:
         max_rounds: int = 6,
         max_observation_chars: int = 1500,
         clock: Callable[[], float] = time.monotonic,
+        memory: MemoryStore | None = None,
     ) -> None:
         self._dispatcher = dispatcher
+        self._memory = memory  # task history; None = not recorded
         self._router = router
         self._planner = planner
         # Forget the conversation after this much inactivity, so an old exchange
@@ -110,30 +119,39 @@ class Orchestrator:
         self.on_progress: Callable[[str], None] | None = None
         self._history: deque[ChatMessage] = deque(maxlen=history_turns * 2)
 
-    def handle(self, text: str) -> Reply:
-        """Handle one natural-language request."""
+    def handle(self, text: str, *, source: str = "cli") -> Reply:
+        """Handle one natural-language request.
+
+        ``source`` (cli, shell, service, voice, workflow) is noted in the task history.
+        """
         text = text.strip()
         if not text:
             return Reply("Say something like 'open Safari' (or 'help').", handled=False)
         if text.lower() in {"help", "?", "what can you do"}:
             return Reply(HELP_TEXT)
         now = self._clock()
+        started_at = datetime.now(UTC)
         if self._last_activity is not None and now - self._last_activity > self._history_ttl:
             self._history.clear()
         self._last_activity = now
 
         call = self._router(text)
+        if call is not None and call.tool not in self._dispatcher.registry.names():
+            call = None  # e.g. "remember ..." while memory is turned off
         result = self._dispatcher.execute(call) if call is not None else None
-        if result is not None and not (
-            self._planner is not None and result.error_type in _FALL_THROUGH_ERRORS
+        if (
+            call is not None
+            and result is not None
+            and not (self._planner is not None and result.error_type in _FALL_THROUGH_ERRORS)
         ):
-            reply = Reply(format_result(result), [result])
+            reply = Reply(format_result(result), [result], steps=[StepRecord(0, call, result)])
         elif self._planner is None:
             reply = Reply(AI_DISABLED_TEXT, handled=False)
         else:
             reply = self._plan_and_execute(self._planner, text)
 
         self._remember(text, reply.text)
+        self._record(text, reply, started_at, (self._clock() - now) * 1000, source)
         return reply
 
     def clear_history(self) -> None:
@@ -269,6 +287,44 @@ class Orchestrator:
     def _remember(self, request: str, reply: str) -> None:
         self._history.append({"role": "user", "content": request})
         self._history.append({"role": "assistant", "content": reply})
+
+    def _record(
+        self, request: str, reply: Reply, started_at: datetime, duration_ms: float, source: str
+    ) -> None:
+        """Add the request to the persistent task history (never fails the request)."""
+        if self._memory is None:
+            return
+        record = make_task_record(
+            request=request,
+            outcome=outcome(reply),
+            reply=reply.text,
+            steps=[
+                (s.call.tool, s.result.status.value, dict(s.call.arguments)) for s in reply.steps
+            ],
+            outside_content=any(r.untrusted for r in reply.results),
+            rounds=reply.rounds,
+            duration_ms=duration_ms,
+            source=source,
+            started_at=started_at,
+        )
+        try:
+            self._memory.record_task(record)
+        except JarvisError as exc:
+            log.warning("Task history not saved: %s", exc.message)
+
+
+def outcome(reply: Reply) -> str:
+    """One word for the task history: done, failed, not_done, dry_run or stopped."""
+    statuses = {r.status for r in reply.results}
+    if not reply.handled:
+        return "not_done"
+    if ToolStatus.FAILED in statuses:
+        return "failed"
+    if statuses & {ToolStatus.DENIED, ToolStatus.CANCELLED, ToolStatus.NEEDS_CLARIFICATION}:
+        return "not_done"
+    if ToolStatus.DRY_RUN in statuses:
+        return "dry_run"
+    return "stopped" if reply.stopped else "done"
 
 
 def _describe_call(call: ToolCall) -> str:

@@ -204,6 +204,8 @@ def benchmark(
                 "ai": config.ai.model_copy(
                     update={"idle_unload_seconds": 86400.0, "prompt_cache_dir": cache_dir}
                 ),
+                # Benchmark prompts are not the user's tasks.
+                "memory": config.memory.model_copy(update={"record_history": False}),
             }
         )
         runtime = build_runtime(bench_config, platform, DenyAllConfirmer())

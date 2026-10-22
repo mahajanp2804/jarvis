@@ -13,6 +13,7 @@ Examples::
     jarvis doctor
     jarvis service install          # start at login; shortcut ⌃⌥⌘J opens Jarvis
     jarvis ask "open my browser"    # send a request to the running service
+    jarvis memory show              # what Jarvis remembers (also: export, clear)
 
 Exit codes: 0 success (or dry run), 1 error, 3 not executed (denied,
 cancelled, needs clarification, or not understood), 130 interrupted.
@@ -28,7 +29,7 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 
-from jarvis import __version__, model_cli, service_cli
+from jarvis import __version__, memory_cli, model_cli, service_cli
 from jarvis.agent.orchestrator import Reply, format_result
 from jarvis.ai.model_files import check_model_file
 from jarvis.ai.registry import spec_for_filename
@@ -37,6 +38,7 @@ from jarvis.bootstrap import Runtime, build_runtime
 from jarvis.config import JarvisConfig, load_config, resolve_config_path, write_example_config
 from jarvis.errors import JarvisError
 from jarvis.logging_setup import configure_logging
+from jarvis.memory.store import Section
 from jarvis.platforms import get_platform
 from jarvis.platforms.base import DiagnosticCheck
 from jarvis.runtime.permissions import InteractiveConfirmer, PolicyEngine
@@ -146,6 +148,32 @@ def build_parser() -> argparse.ArgumentParser:
     ask = sub.add_parser("ask", parents=[common], help="send one request to the running service")
     ask.add_argument("text", nargs="+")
 
+    memory = sub.add_parser(
+        "memory", parents=[common], help="inspect, export or erase what Jarvis remembers"
+    )
+    memory_sub = memory.add_subparsers(dest="memory_command", required=True, metavar="ACTION")
+    memory_show = memory_sub.add_parser(
+        "show", parents=[common], help="show preferences and recent tasks"
+    )
+    memory_show.add_argument("--limit", type=int, default=10, help="recent tasks to show")
+    memory_export = memory_sub.add_parser(
+        "export", parents=[common], help="write everything stored as JSON"
+    )
+    memory_export.add_argument("file", nargs="?", type=Path, help="output file (default: stdout)")
+    memory_clear = memory_sub.add_parser(
+        "clear", parents=[common], help="erase the memory (asks first)"
+    )
+    memory_clear.add_argument("--preferences", action="store_true", help="only preferences")
+    memory_clear.add_argument("--history", action="store_true", help="only the task history")
+    memory_clear.add_argument("--yes", action="store_true", help="don't ask for confirmation")
+    memory_remember = memory_sub.add_parser(
+        "remember", parents=[common], help='remember a preference, e.g. editor "VS Code"'
+    )
+    memory_remember.add_argument("name")
+    memory_remember.add_argument("value", nargs="+")
+    memory_forget = memory_sub.add_parser("forget", parents=[common], help="forget a preference")
+    memory_forget.add_argument("name", nargs="+")
+
     sub.add_parser("doctor", parents=[common], help="check the environment and permissions")
     return parser
 
@@ -222,7 +250,7 @@ def _run_shell(runtime: Runtime, cancel: threading.Event) -> int:
             print("Conversation history cleared.")
             continue
         try:
-            print(runtime.orchestrator.handle(line).text)
+            print(runtime.orchestrator.handle(line, source="shell").text)
         except KeyboardInterrupt:
             print("\nCancelled.")
             cancel.clear()  # the interrupt only cancels the current request
@@ -322,6 +350,24 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
     return EXIT_ERROR if any(c.ok is False for c in checks) else EXIT_OK
 
 
+def _memory_command(config: JarvisConfig, args: argparse.Namespace) -> int:
+    action = args.memory_command
+    if action == "show":
+        return memory_cli.show(config, limit=args.limit)
+    if action == "export":
+        return memory_cli.export(config, args.file)
+    if action == "clear":
+        sections: list[Section] = []
+        if args.preferences:
+            sections.append("preferences")
+        if args.history:
+            sections.append("history")
+        return memory_cli.clear(config, sections, assume_yes=args.yes)
+    if action == "remember":
+        return memory_cli.remember(config, args.name, " ".join(args.value))
+    return memory_cli.forget(config, " ".join(args.name))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point. Returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -365,6 +411,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return service_cli.activate()
     if args.command == "ask":
         return service_cli.ask(" ".join(args.text), config)
+    if args.command == "memory":
+        return _memory_command(config, args)
     if args.command == "model":
         if args.model_command == "info":
             return model_cli.model_info(config)

@@ -33,6 +33,7 @@ def test_defaults() -> None:
         "projects.*",
         "terminal.*",
         "browser.*",
+        "memory.*",
     ]
 
 

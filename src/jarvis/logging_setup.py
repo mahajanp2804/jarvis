@@ -24,6 +24,16 @@ _SENSITIVE_KEY = re.compile(
     re.IGNORECASE,
 )
 
+# Words that name a secret even without a "key=value" shape ("my PIN is 1234").
+_SECRET_WORDS = re.compile(
+    r"\b(?:passw(?:or)?ds?|passcodes?|passphrases?|pin(?:\s+(?:code|number))?|otp|"
+    r"one[- ]time (?:code|password)|2fa|mfa|cvv|cvc|credit[- ]?card|card number|"
+    r"debit card|iban|routing number|account number|social security|ssn|passport number|"
+    r"api[- _]?keys?|secret(?: key)?s?|tokens?|private keys?|seed phrases?|"
+    r"recovery (?:codes?|phrases?|keys?))\b",
+    re.IGNORECASE,
+)
+
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # key=value / key: value pairs whose key looks sensitive
     (
@@ -50,11 +60,29 @@ def redact(text: str) -> str:
     return text
 
 
+def mentions_secret(text: str) -> bool:
+    """True if ``text`` names a kind of secret (password, PIN, card number, token...)."""
+    return bool(_SECRET_WORDS.search(text))
+
+
 def redact_data(value: Any) -> Any:
-    """Recursively redact a JSON-like structure (dicts, lists, strings)."""
+    """Recursively redact a JSON-like structure (dicts, lists, strings).
+
+    Values under sensitive keys are masked, and so is the ``value`` of a
+    ``{"name": ..., "value": ...}`` pair whose name looks sensitive.
+    """
     if isinstance(value, Mapping):
+        name = value.get("name")
+        secret_pair = isinstance(name, str) and (
+            bool(_SENSITIVE_KEY.search(name)) or mentions_secret(name)
+        )
         return {
-            k: (REDACTED if isinstance(k, str) and _SENSITIVE_KEY.search(k) else redact_data(v))
+            k: (
+                REDACTED
+                if isinstance(k, str)
+                and (_SENSITIVE_KEY.search(k) or (secret_pair and k == "value"))
+                else redact_data(v)
+            )
             for k, v in value.items()
         }
     if isinstance(value, list | tuple):

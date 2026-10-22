@@ -30,6 +30,7 @@ from jarvis.errors import ConfigError
 from jarvis.paths import (
     default_config_file,
     default_log_dir,
+    default_memory_path,
     default_models_dir,
     default_prompt_cache_dir,
 )
@@ -40,7 +41,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 # Tool groups enabled by default ("*" wildcards). Screen capture is opt-in:
 # add "screen.*" to use it.
-DEFAULT_TOOLS = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*"]
+DEFAULT_TOOLS = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*"]
 
 
 class _Section(BaseModel):
@@ -316,6 +317,32 @@ class ServiceConfig(_Section):
             raise ValueError(exc.message + (f" {exc.hint}" if exc.hint else "")) from None
 
 
+class MemoryConfig(_Section):
+    """Persistent memory (SQLite): remembered preferences and task history.
+
+    Approvals are never stored, and secrets and outside content are left out.
+    Inspect, export or erase it with `jarvis memory show|export|clear`.
+    """
+
+    enabled: bool = True
+    # Unset = ~/Library/Application Support/Jarvis/memory.sqlite3 on macOS.
+    path: Path | None = None
+    # Keep a history of requests, their outcome and the tools used.
+    record_history: bool = True
+    history_days: int = Field(default=30, ge=1, le=3650)
+    max_history: int = Field(default=1000, ge=10, le=100_000)
+    # Give remembered preferences ("my editor is VS Code") to the model.
+    share_preferences: bool = True
+
+    @field_validator("path")
+    @classmethod
+    def _expand(cls, value: Path | None) -> Path | None:
+        return value.expanduser() if value is not None else None
+
+    def resolved_path(self) -> Path:
+        return self.path or default_memory_path()
+
+
 class JarvisConfig(_Section):
     """Root configuration object."""
 
@@ -328,6 +355,7 @@ class JarvisConfig(_Section):
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
 
 EXAMPLE_CONFIG_TOML = """\
@@ -357,7 +385,7 @@ discovery_cache_seconds = 60.0
 [policy]
 # Tools Jarvis may use ("*" wildcards allowed). Anything not listed is denied.
 # Screen capture/OCR is opt-in: add "screen.*".
-enabled_tools = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*"]
+enabled_tools = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*"]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.
 confirm_at_or_above = "medium"
@@ -445,6 +473,19 @@ label = "local.jarvis.assistant"
 # Also show a dialog when an action visibly succeeded (e.g. an app opened).
 show_success = false
 request_timeout_seconds = 300.0
+
+[memory]
+# Remember preferences you state ("remember that my editor is VS Code") and keep a
+# task history. Approvals are never stored; secrets and outside content are left out.
+# Inspect, export or erase it: jarvis memory show | export | clear
+enabled = true
+# Uncomment to override the default (~/Library/Application Support/Jarvis/memory.sqlite3).
+# path = "~/Library/Application Support/Jarvis/memory.sqlite3"
+record_history = true
+history_days = 30
+max_history = 1000
+# Give remembered preferences to the model so "open my editor" works.
+share_preferences = true
 """
 
 

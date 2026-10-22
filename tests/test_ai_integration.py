@@ -48,6 +48,8 @@ def runtime(tmp_path_factory: pytest.TempPathFactory, platform: FakePlatform) ->
                 "idle_unload_seconds": 3600,
                 "prompt_cache_dir": str(tmp_path_factory.mktemp("prompt-cache")),
             },
+            # Module-scoped: set up before the per-test private_memory fixture.
+            "memory": {"path": str(tmp_path_factory.mktemp("memory") / "memory.sqlite3")},
         }
     )
     rt = build_runtime(config, platform, ScriptedConfirmer(True), poll_interval=0.01)
