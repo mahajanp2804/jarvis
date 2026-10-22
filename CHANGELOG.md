@@ -4,7 +4,7 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
-## 0.6.0: Packaging and portfolio (Phase 6, in progress)
+## 0.6.0: Packaging and portfolio (Phase 6, 2026-10-23)
 
 - Single-sourced version (`jarvis.__version__`), project URLs and classifiers
   in `pyproject.toml`.
@@ -24,6 +24,14 @@ entries are reconstructed from the commit history.
 - `docs/WINDOWS.md` rewritten as an ordered roadmap (W0–W6) with effort,
   risks and exit criteria, based on an inventory of the POSIX assumptions left
   in shared code.
+- README: CI and platform badges, contents, install options (tested versions,
+  without local AI, from GitHub with pip) and full uninstall, a threats and
+  mitigations table, CI, an up-to-date roadmap, and a licence note (no licence
+  chosen yet).
+- Verified from a fresh clone of the public repo: setup with the tested
+  versions in 9 s, 636 tests passing, lint and strict types clean; and
+  `pip install "jarvis-assistant[voice] @ git+https://github.com/mahajanp2804/jarvis"`
+  runs from a clean virtualenv.
 
 ## Phase 5: Memory and voice (2026-10-22)
 

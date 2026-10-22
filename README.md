@@ -1,5 +1,9 @@
 # Jarvis
 
+[![CI](https://github.com/mahajanp2804/jarvis/actions/workflows/ci.yml/badge.svg)](https://github.com/mahajanp2804/jarvis/actions/workflows/ci.yml)
+![Python 3.11–3.14](https://img.shields.io/badge/python-3.11%E2%80%933.14-blue)
+![macOS on Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-lightgrey)
+
 A personal AI computer assistant that runs **locally** on macOS (Apple Silicon first,
 Windows later), with no app to install: it's a Python program that starts at login.
 Press **⌃⌥⌘J** anywhere, type what you want, and Jarvis turns it into checked,
@@ -25,8 +29,8 @@ permission-gated actions on your computer:
   (on-device whisper.cpp); and spoken replies with the built-in macOS voices.
   Both are off by default.
 
-> **Status: Phase 5 of 6 (memory and voice).** Windows adapters come next. See
-> [Roadmap](#roadmap).
+> **Status: all six phases done (version 0.6.0).** Works on macOS (Apple
+> Silicon). Windows is planned, not implemented: see [Roadmap](#roadmap).
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -35,7 +39,15 @@ permission-gated actions on your computer:
 | 3 | Launch Agent, global hotkey, graceful lifecycle, model worker process | ✅ done |
 | 4 | File, project, terminal, browser (Playwright) and screen tools; multi-step agent loop with verification and bounded retries | ✅ done |
 | 5 | SQLite memory (preferences, task history, workflows) with inspect/export/clear; spoken replies; push-to-talk voice input | ✅ done |
-| 6 | Windows adapters, portfolio polish | planned |
+| 6 | Packaging and portfolio: install and usage docs, CI, packaging check, reproducible benchmarks, Windows roadmap | ✅ done |
+
+**Contents:** [Quick start](#quick-start-macos-apple-silicon) ·
+[Install options and uninstall](#install-options-and-uninstall) · [Tools](#tools) ·
+[Memory and workflows](#memory-and-workflows) · [Voice](#voice) ·
+[Architecture](#architecture) · [Security model](#security-model) ·
+[Configuration](#configuration) · [Performance](#performance-and-trade-offs) ·
+[Testing](#testing) · [Known limitations](#known-limitations) ·
+[Troubleshooting](#troubleshooting) · [Roadmap](#roadmap)
 
 ## Quick start (macOS, Apple Silicon)
 
@@ -44,7 +56,7 @@ Requirements: macOS on Apple Silicon, an **arm64** Python ≥ 3.11 (Homebrew
 model, and Google Chrome (or Edge/Brave) for the browser tools.
 
 ```bash
-cd ~/Desktop/Project/jarvis
+git clone https://github.com/mahajanp2804/jarvis.git && cd jarvis
 scripts/setup_macos.sh          # .venv + Jarvis + llama.cpp (Metal) + Playwright + OCR + voice
 source .venv/bin/activate
 jarvis model download           # 2.5 GB; shows details and asks first
@@ -112,6 +124,37 @@ Other commands: `jarvis apps list|open|quit`, `jarvis model info|check|download`
 
 Exit codes: `0` success or dry run, `1` error, `3` not executed (denied,
 cancelled, needs clarification, or not understood), `130` interrupted.
+
+## Install options and uninstall
+
+* **Exact tested versions:** `JARVIS_TESTED_VERSIONS=1 scripts/setup_macos.sh`
+  installs the package versions in [`constraints-macos.txt`](constraints-macos.txt).
+  By default, the setup script takes the newest versions within the ranges in
+  `pyproject.toml`.
+* **Without local AI** (no Xcode tools, no 2.5 GB model; rule-based commands,
+  memory and voice still work): `JARVIS_SKIP_LLM=1 scripts/setup_macos.sh`.
+* **As a package** in a virtualenv of your own. CI builds this wheel and runs
+  it from a clean environment on every push (`scripts/check_package.sh`):
+
+  ```bash
+  python3 -m pip install "jarvis-assistant[browser,screen,voice] @ git+https://github.com/mahajanp2804/jarvis"
+  CMAKE_ARGS="-DGGML_METAL=on" python3 -m pip install "llama-cpp-python>=0.3.36,<0.4"   # local AI
+  ```
+
+**Uninstall:**
+
+```bash
+scripts/uninstall_macos.sh      # stops Jarvis and removes the Launch Agent
+```
+
+That keeps your data. To remove everything, also delete:
+
+* `~/Library/Application Support/Jarvis/`: config, models (2.5 GB + 60 MB),
+  memory database, saved prompt state and browser profile;
+* `~/Library/Logs/Jarvis/`: logs and the audit log;
+* the cloned folder.
+
+`jarvis memory clear` erases only the memory.
 
 ## Tools
 
@@ -329,6 +372,22 @@ microphone or Globe key).
 
 ## Security model
 
+The threats Jarvis is designed against, and where each is handled:
+
+| Threat | Mitigation |
+|---|---|
+| The model proposes something harmful or wrong | Model output is only a proposal: every step is validated, checked against the policy, risk-rated, confirmed if risky, verified and audited (`api/dispatcher.py`) |
+| A web page, file or command output tries to instruct Jarvis (prompt injection) | Outside content is shown to the model as data; after it's read, every change needs your confirmation (taint); content can never grant permissions |
+| A tool touches files it shouldn't | Path sandbox: resolved symlinks, read/write roots, `~/Library` and hidden or key files blocked, nothing overwritten or permanently deleted (`tools/paths.py`) |
+| A command does damage | No shell; allowlisted programs with per-call risk; installs, pushes and destructive git always ask; `sudo`, `rm`, `curl`, shells refused (`tools/commands.py`) |
+| A "yes" is reused later | Approvals are never cached or stored; workflows replay through the full pipeline |
+| Secrets leak to disk | Redacted logs and audit log (`0600`); memory refuses or omits secrets; secure delete on clear |
+| Another local user drives Jarvis | Control socket `0600` in a `0700` folder with a peer-uid check |
+| Jarvis listens or watches without being asked | No wake word: the microphone opens only after the shortcut; screen tools are off by default and ask every time |
+| Native code crashes or hangs | Model and voice run in worker processes; shutdown kills a generation mid-way |
+
+In more detail:
+
 * **Model output is untrusted.** The planner only returns `ToolCall`s. The
   dispatcher validates each one and applies policy and confirmation exactly as
   for typed commands.
@@ -542,7 +601,7 @@ sounddevice 0.5.6 on macOS 27.0.1.
 ## Testing
 
 ```bash
-pytest                                       # 636 tests, ~12 s: unit, fake platform, real processes,
+pytest                                       # 639 tests, ~13 s: unit, fake platform, real processes,
                                              #   headless Chrome on a local site, Vision OCR (no model)
 JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real models: find→inspect→run a project, the prompt
                                              #   cache across reloads, remembered preferences,
@@ -550,7 +609,13 @@ JARVIS_RUN_MODEL_TESTS=1 pytest -m model     # real models: find→inspect→run
 JARVIS_RUN_GUI_TESTS=1 pytest -m gui         # Calculator, service dialog + SIGTERM, real screen capture
 ruff check src tests && ruff format --check src tests
 mypy                                         # strict mode
+scripts/check_package.sh                     # build the wheel, install it cleanly, smoke-test it
 ```
+
+**CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, strict
+types, the suite and the packaging check on every push: on Apple Silicon macOS
+with Python 3.11 and 3.14, and the shared core on Linux (615 tests pass there
+with no platform adapter, evidence that the core is portable).
 
 * The unit tests use an in-memory app platform, a throwaway home folder and a
   scripted fake model. They never touch your apps or files or load the real
@@ -620,19 +685,25 @@ revision and SHA-256.
 
 ## Roadmap
 
-* **Phase 5 (done):** SQLite memory (preferences, task history, workflows)
-  with inspect/export/clear, spoken replies, push-to-talk voice input.
-* **Phase 6:** Windows adapters ([`docs/WINDOWS.md`](docs/WINDOWS.md)),
-  optional menu-bar UI.
-  Packaging as an `.app` stays optional: Jarvis keeps working without
-  installing an app.
+All six phases of the original plan are done; [`CHANGELOG.md`](CHANGELOG.md)
+lists what each one added. Next:
+
+* **Windows**, milestones W0–W6 in [`docs/WINDOWS.md`](docs/WINDOWS.md),
+  starting with a `windows-latest` CI job for the core.
+* A live-microphone accuracy check for push-to-talk, and the macOS
+  microphone permission for the background service.
+* Optional: a menu-bar UI. Packaging as an `.app` stays optional: Jarvis keeps
+  working without installing an app.
 
 ## Windows
 
-Not supported yet, and not tested on Windows. The platform boundary and plan
-(service, shortcut, event loop, the Phase 4 tools, and Phase 5 memory and
-voice) are in [`docs/WINDOWS.md`](docs/WINDOWS.md).
+Not supported yet, and not tested on Windows. [`docs/WINDOWS.md`](docs/WINDOWS.md)
+is the roadmap. It covers what already runs without macOS (the core, verified
+on Linux CI), the POSIX assumptions left in shared code, milestones with exit
+criteria, and the adapter plan for the service, tools, memory and voice.
 
 ## Licence
 
-Not chosen yet.
+No licence has been chosen yet. Until one is added, the code is visible but
+not licensed for reuse: please ask before using it in your own projects. The
+models have their own licences (Qwen3: Apache-2.0; Whisper/whisper.cpp: MIT).
