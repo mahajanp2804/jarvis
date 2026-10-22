@@ -21,6 +21,9 @@ entries are reconstructed from the commit history.
 - `docs/BENCHMARKS.md`: methodology and all current measurements.
 - Workflow commands also accept "work flow", a mishearing the voice benchmark
   found.
+- `docs/WINDOWS.md` rewritten as an ordered roadmap (W0–W6) with effort,
+  risks and exit criteria, based on an inventory of the POSIX assumptions left
+  in shared code.
 
 ## Phase 5: Memory and voice (2026-10-22)
 

@@ -1,12 +1,58 @@
-# Windows support plan
+# Windows support roadmap
 
 **Status: not implemented and not tested on Windows.** `jarvis/platforms/windows.py`
 is a placeholder. Every operation raises `UnsupportedPlatformError` with a pointer
-to this document, so Windows users get a clear message instead of a crash.
+to this document, so Windows users get a clear message instead of a crash. The
+README won't claim Windows support until the [definition of done](#definition-of-done)
+is met.
 
-The shared core (agent, dispatcher, policy, config, audit log, tools) imports no
-OS-specific libraries. Adding Windows means implementing the adapters below. The
-core does not need rewriting.
+## Where things stand
+
+The shared core (agent loop, planner, dispatcher, policy, config, memory,
+audit log, tool logic) imports no OS-specific libraries. Each OS supplies a
+`PlatformAdapter` (`jarvis/platforms/base.py`). There is evidence this boundary
+holds: **CI runs the test suite on Linux, where Jarvis has no adapter at all,
+and 615 tests pass with only the macOS-specific ones skipped** (see
+`.github/workflows/ci.yml`).
+
+What's left besides the adapters themselves: a short list of POSIX
+assumptions in shared code, found by searching the source (October 2026):
+
+| Shared code | POSIX assumption | Windows replacement |
+|---|---|---|
+| `runtime/lifecycle.py` (`InstanceLock`) | `fcntl.flock`, imported at module load | Named mutex (`CreateMutexW`), or `msvcrt.locking`; import lazily per OS |
+| `runtime/control.py`, `runtime/lifecycle.py` | Unix socket, peer-uid check (`LOCAL_PEERCRED`/`SO_PEERCRED`), `os.getuid()` in the socket path | Named pipe with a current-user-only ACL (Python's `AF_UNIX` on Windows has no peer credentials) |
+| `runtime/event_loop.py` (`SignalBridge`), `runtime/lifecycle.py` | `signal.set_wakeup_fd` + SIGTERM/SIGINT | `SetConsoleCtrlHandler` in a console; `WM_CLOSE`/`WM_ENDSESSION` to a hidden window for the background service |
+| `tools/terminal.py` | `start_new_session=True`, `os.killpg` | `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT`, then `TerminateProcess`; a job object so child trees die with Jarvis |
+| `voice_cli.py` (terminal push-to-talk) | `select()` on stdin | `msvcrt.kbhit()` polling (`select` only takes sockets on Windows) |
+| logs, memory, prompt cache, control dir, browser profile, undo lists | POSIX modes `0600`/`0700` (silently ignored on Windows) | Rely on per-user `%APPDATA%`/`%LOCALAPPDATA%` ACLs, and verify them in `jarvis doctor` |
+| `config.py` defaults | `terminal.search_path` (`/opt/homebrew/bin`, …), `files.blocked_paths` (`~/Library`) | Per-OS defaults: block `%APPDATA%`, `%LOCALAPPDATA%`, `C:\Windows`; case-insensitive path checks |
+| `service_cli.py` | `PATH` for the launchd job | Task Scheduler action environment |
+
+## Milestones
+
+In order. Each milestone ends with tests passing on GitHub Actions'
+`windows-latest`. Effort is a rough guess for one developer.
+
+| # | Milestone | Done when | Effort |
+|---|---|---|---|
+| W0 | **Core runs on Windows.** Lazy-import `fcntl`; add a `windows-latest` CI job; skip OS-specific tests there like on Linux | The core test suite passes on Windows CI | 1–2 days |
+| W1 | **Applications.** Start Menu `.lnk` and Store-app (`Get-StartApps`) discovery, launch via `ShellExecuteW` / `shell:AppsFolder`, running check, graceful quit with `WM_CLOSE`, process stats (`GetProcessMemoryInfo`) | `apps.*` integration tests open and quit Notepad on CI | 3–5 days |
+| W2 | **Files and terminal.** Recycle Bin (`IFileOperation`), open/reveal, Windows Terminal, search fallback, Windows sandbox defaults, process groups and job objects, `.exe`/`.cmd` resolution, venv `Scripts\` | File, project and terminal tests pass on Windows CI | 3–5 days |
+| W3 | **Background service.** Win32 message loop, `RegisterHotKey`, dialogs, named mutex, named-pipe control channel, shutdown messages, start at logon with Task Scheduler | Headless service tests pass on CI; shortcut and dialogs checked on a real Windows PC | 1–2 weeks |
+| W4 | **Screen, speech and voice.** `Windows.Graphics.Capture` + `Windows.Media.Ocr`; SAPI speech output; the voice worker as-is (both libraries ship Windows wheels); `kbhit` push-to-talk | OCR and speech tests on CI; microphone checked on a real PC | 3–5 days |
+| W5 | **Local AI.** llama-cpp-python on Windows (CPU wheel; CUDA or Vulkan optional), prompt cache file replacement under Windows file locking, model download paths | Real-model tests pass on a Windows PC | 2–4 days |
+| W6 | **Install and docs.** `scripts/setup_windows.ps1`, install/uninstall, README section with tested Windows versions | A fresh Windows PC goes from clone to working shortcut by following the README | 2–3 days |
+
+**Risks.** GitHub's Windows runners have a desktop session, but global
+shortcuts, dialogs and the microphone still need a real machine (W3, W4).
+Building llama-cpp-python needs Visual Studio Build Tools (W5). Windows
+Defender may slow first runs of new executables. SmartScreen doesn't apply to
+pip-installed scripts.
+
+**Test strategy.** Keep the macOS rule: unit tests on fakes everywhere,
+integration tests that only touch the real OS behind markers, and GUI tests
+opt-in. CI gains a `windows-latest` job at W0 that grows with each milestone.
 
 ## Requirements (expected)
 
@@ -22,7 +68,7 @@ core does not need rewriting.
   (`; sys_platform == "win32"`): `psutil`, and possibly `pywin32` or plain
   `ctypes` for window messages.
 
-## Adapter plan
+## Adapter reference
 
 | Interface | macOS (implemented) | Windows (plan) |
 |---|---|---|
@@ -74,10 +120,7 @@ control handler above instead.
 | Terminal push-to-talk | `select()` on stdin while recording | `msvcrt.kbhit()` polling (Windows `select` only works on sockets) |
 | Microphone permission | macOS asks per responsible app (terminal, or Python for the service) | Settings → Privacy → Microphone → "Let desktop apps access your microphone" |
 
-### Later phases
-* **Accessibility (Phase 4+):** UI Automation (UIA) instead of the macOS AX API.
-
-## Definition of done for Windows
+## Definition of done
 
 1. All unit tests pass on Windows (GitHub Actions `windows-latest`).
 2. Windows integration tests exist (read-only discovery; opt-in GUI open/quit of
