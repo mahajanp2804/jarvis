@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import select
 import sys
 import threading
@@ -176,6 +177,41 @@ def transcribe(config: JarvisConfig, audio_file: Path) -> int:
         return EXIT_ERROR
     print(transcript.text)
     return EXIT_OK if transcript.text else EXIT_NOT_DONE
+
+
+def benchmark(
+    config: JarvisConfig,
+    *,
+    speaker_voice: str | None,
+    use_gpu: bool,
+    json_path: Path | None,
+) -> int:
+    """`jarvis voice benchmark`: transcribe synthesized commands with the real worker."""
+    import tempfile
+
+    from jarvis.voice.benchmark import render, run_voice_benchmark, write_json
+
+    voice = voice_input(config)
+    voice.settings = dataclasses.replace(voice.settings, use_gpu=use_gpu or voice.settings.use_gpu)
+    try:
+        if speaker_voice:  # say silently uses the system voice for unknown names
+            from jarvis.platforms.macos_speech import SaySpeaker
+
+            SaySpeaker(speaker_voice).check()
+        with tempfile.TemporaryDirectory(prefix="jarvis-voice-bench-") as tmp:
+            report = run_voice_benchmark(
+                voice,
+                Path(tmp),
+                speaker_voice=speaker_voice,
+                progress=lambda msg: print(f"… {msg}", file=sys.stderr, flush=True),
+            )
+    except JarvisError as exc:
+        _print_error(exc)
+        return EXIT_ERROR
+    print(render(report))
+    if json_path is not None:
+        write_json(report, json_path)
+    return EXIT_OK if all(s.exact for s in report.samples) else EXIT_NOT_DONE
 
 
 def download(

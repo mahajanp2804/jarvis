@@ -22,19 +22,20 @@ from jarvis.agent.router import normalise_command
 from jarvis.api.schemas import ToolCall, ToolResult, ToolStatus
 from jarvis.memory.store import WorkflowStep
 
+# "work ?flow": speech-to-text sometimes hears "work flow" (measured with an Australian voice).
 _SAVE = re.compile(
     r"^save\s+(?:that|this|it|the last (?:task|request))\s+(?:as\s+)?(?:an?\s+)?"
-    r"(?:workflow\s+)?(?:called\s+|named\s+)?(?P<name>.+)$",
+    r"(?:work ?flow\s+)?(?:called\s+|named\s+)?(?P<name>.+)$",
     re.IGNORECASE,
 )
 _RUN = re.compile(
     r"^(?:run|start|do|replay)\s+(?:the\s+|my\s+)?"
-    r"(?:workflow\s+(?:called\s+|named\s+)?(?P<a>.+)|(?P<b>.+?)\s+workflow)$",
+    r"(?:work ?flow\s+(?:called\s+|named\s+)?(?P<a>.+)|(?P<b>.+?)\s+work ?flow)$",
     re.IGNORECASE,
 )
 _LIST = re.compile(
-    r"^(?:(?:list|show)(?:\s+(?:my|all|the|saved))*\s+workflows|"
-    r"what workflows (?:do i have|are there))$",
+    r"^(?:(?:list|show)(?:\s+(?:my|all|the|saved))*\s+work ?flows|"
+    r"what work ?flows (?:do i have|are there))$",
     re.IGNORECASE,
 )
 

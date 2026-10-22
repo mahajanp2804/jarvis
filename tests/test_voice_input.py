@@ -124,6 +124,25 @@ def test_resample_to_16_khz() -> None:
     assert abs(float(np.max(tone)) - 1.0) < 0.01  # a 220 Hz tone survives intact
 
 
+def test_voice_benchmark_reports_accuracy_and_timing(tmp_path: Path) -> None:
+    from jarvis.voice.benchmark import normalise, render, run_voice_benchmark
+
+    def synth(sentence: str, dest: Path, voice: str | None) -> None:
+        dest.write_text("Open Safari!" if "Safari" in sentence else "quit music please")
+
+    report = run_voice_benchmark(
+        fake_voice(tmp_path), tmp_path, sentences=["open Safari", "quit Music"], synth=synth
+    )
+    assert [(s.heard, s.exact) for s in report.samples] == [
+        ("Open Safari!", True),
+        ("quit music please", False),
+    ]
+    assert all(s.wall_seconds > 0 for s in report.samples)
+    text = render(report)
+    assert "Exact transcripts:      1/2" in text and "said: 'quit Music'" in text
+    assert normalise("What's on the To-Do list?") == "what's on the to do list"
+
+
 # -- terminal ---------------------------------------------------------------------------
 
 

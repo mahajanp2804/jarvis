@@ -24,6 +24,8 @@ MakeRuntime = Callable[..., tuple[Runtime, ScriptedConfirmer]]
         ("Save this as a workflow called dev start.", WorkflowCommand("save", "dev start")),
         ("jarvis, save the last task as 'standup'", WorkflowCommand("save", "standup")),
         ("run the morning setup workflow", WorkflowCommand("run", "morning setup")),
+        ("Run the morning setup work flow.", WorkflowCommand("run", "morning setup")),
+        ("list my work flows", WorkflowCommand("list")),
         ("please run workflow dev start", WorkflowCommand("run", "dev start")),
         ("start my standup workflow", WorkflowCommand("run", "standup")),
         ("list workflows", WorkflowCommand("list")),

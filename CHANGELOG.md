@@ -13,6 +13,14 @@ entries are reconstructed from the commit history.
 - `scripts/check_package.sh`: builds the wheel, checks its contents, installs it
   into a fresh virtualenv with a throwaway home folder, and smoke-tests the
   `jarvis` command.
+- CI (GitHub Actions): lint, strict types, the test suite and the packaging
+  check on Apple Silicon macOS with Python 3.11 and 3.14, and the shared core
+  on Linux (615 tests pass there without macOS).
+- `jarvis voice benchmark`: speech-to-text accuracy, latency, CPU and peak
+  memory on synthesized commands, no microphone; `--voice` and `--gpu`.
+- `docs/BENCHMARKS.md`: methodology and all current measurements.
+- Workflow commands also accept "work flow", a mishearing the voice benchmark
+  found.
 
 ## Phase 5: Memory and voice (2026-10-22)
 

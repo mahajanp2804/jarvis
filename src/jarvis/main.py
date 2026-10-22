@@ -205,6 +205,12 @@ def build_parser() -> argparse.ArgumentParser:
         "transcribe", parents=[common], help="transcribe a 16 kHz mono WAV file"
     )
     voice_transcribe.add_argument("file", type=Path)
+    voice_bench = voice_sub.add_parser(
+        "benchmark", parents=[common], help="speech-to-text speed and accuracy (no microphone)"
+    )
+    voice_bench.add_argument("--voice", help='system voice for the test speech, e.g. "Rishi"')
+    voice_bench.add_argument("--gpu", action="store_true", help="transcribe on the GPU (Metal)")
+    voice_bench.add_argument("--json", type=Path, help="also write results as JSON")
     voice_list = voice_sub.add_parser("voices", parents=[common], help="list installed voices")
     voice_list.add_argument("--language", help='e.g. "en" or "en_GB"')
     voice_say = voice_sub.add_parser(
@@ -570,6 +576,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return voice_cli.listen(config)
         if args.voice_command == "transcribe":
             return voice_cli.transcribe(config, args.file)
+        if args.voice_command == "benchmark":
+            return voice_cli.benchmark(
+                config, speaker_voice=args.voice, use_gpu=args.gpu, json_path=args.json
+            )
         return voice_cli.say(config, platform, " ".join(args.text), voice=args.voice)
     if args.command == "daemon":
         return service_cli.run_daemon(config, platform, headless=args.headless)

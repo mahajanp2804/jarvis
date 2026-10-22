@@ -103,6 +103,7 @@ jarvis workflow list|show|run|delete NAME
 jarvis voice voices|say "…"         # spoken replies: list voices, hear the configured one
 jarvis voice say --voice Tara "…"   # try another voice without changing the config
 jarvis voice download|listen        # push-to-talk: model, and a microphone test
+jarvis voice benchmark              # speech-to-text accuracy and speed, no microphone
 jarvis voice transcribe FILE.wav    # transcribe a 16 kHz mono WAV
 ```
 
@@ -436,14 +437,16 @@ Phase 5 adds ~6 MB once the memory database has been used (an open SQLite
 connection and the memory/voice modules). Push-to-talk and spoken replies add
 nothing while idle: their processes exist only during a request.
 
-**Requests** (Phase 4 prompt: 25 tools, ~1,770 tokens):
+Full methodology and every measurement: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+
+**Requests** (Phase 5 prompt: 29 tools, 1,905 tokens; `jarvis benchmark`, 23 Oct 2026):
 
 | | Time |
 |---|---|
 | Rule-based command ("open calculator" via the shortcut) | 115 ms to a verified launch |
-| First AI request after a model load, prompt state on disk (the usual case) | ~2.4 s (0.07 s restoring the prompt, then generation); was 7.6 s |
-| First AI request with a new system prompt (first run, or after the tools, app list or settings change) | ~7.8 s (5.4 s reading the prompt + generation + 0.2 s saving it) |
-| Later AI requests (prompt in memory) | 1.4–1.6 s per planning round, ~29 tokens/s |
+| First AI request after a model load, prompt state on disk (the usual case) | 2.5 s (0.07 s restoring the prompt, then generation); was 7.6 s before the prompt cache |
+| First AI request with a new system prompt (first run, or after the tools, app list or settings change) | 8.7 s (6.2 s reading the prompt + generation + 0.24 s saving it) |
+| Later AI requests (prompt in memory) | 1.5–1.7 s per planning round, 28 tokens/s |
 | Multi-step tasks, e.g. "open my project and run it" (3 rounds, cold model) | ~12–16 s end to end, measured before the prompt cache (which removes the ~5.4 s prompt read from the first round) |
 | Model load / unload (worker) | 0.4–0.5 s / 0.07 s |
 | Graceful stop / restart of the service | 0.4 s / 0.7 s |
@@ -502,10 +505,10 @@ already in memory takes 2.27 s. Shorter replies are faster (1.4–1.6 s).
 | Remember / recall / forget a preference, list workflows (rule-based) | instant, no model |
 | Replaying a saved workflow (`run the … workflow`, one app step, via the service) | 0.21 s |
 | Task-history write per request | one small SQLite insert; database 32 KB after a few dozen tasks |
-| Push-to-talk worker per request (CPU whisper, 3 s of speech, after recording) | 0.44 s wall, 0.78 CPU-s, 213 MB peak, all freed on exit |
-| Transcription alone, base.en q5_1 | 0.2 s on the CPU; 0.08 s with `stt_use_gpu` (~7 s once after a Metal shader-cache reset) |
+| Push-to-talk worker per request (CPU whisper, after recording; `jarvis voice benchmark`) | 0.44 s wall, 0.83 CPU-s, 242 MB peak, all freed on exit |
+| Transcription alone, base.en q5_1 | 0.20 s on the CPU; 0.10 s with `stt_use_gpu` (~7 s once after a Metal shader-cache reset) |
 | Push-to-talk / spoken replies while idle | no process, no listening, no cost: the worker and `say` exist only during a request |
-| Accuracy (synthesized test commands, `say` voice) | 6/6 transcribed exactly ("open my Stock Price Predictor project and run it") |
+| Accuracy (6 synthesized commands) | 6/6 exact with Indian-English (Rishi) and US (Samantha) voices; 4/6 with Australian (Karen) |
 
 Real-voice accuracy depends on your microphone and accent, and wasn't measured
 with a live microphone (see Known limitations).

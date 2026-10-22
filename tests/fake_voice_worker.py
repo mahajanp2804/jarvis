@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+from pathlib import Path
 
 
 def emit(event: str, **fields: object) -> None:
@@ -19,6 +20,12 @@ def main() -> int:
     settings = json.loads(sys.argv[2])
     if scenario == "crash":
         return 1
+    if settings.get("audio_file"):  # tests put the "spoken" text in the file itself
+        emit("listening")
+        emit("recorded", seconds=1.5, peak=0.3, speech=True, reason="file")
+        text = Path(settings["audio_file"]).read_text(encoding="utf-8")
+        emit("text", text=text, seconds=0.04)
+        return 0
     stopped = threading.Event()
 
     def watch() -> None:
