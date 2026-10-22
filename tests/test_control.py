@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import stat
@@ -55,8 +56,12 @@ def raw_request(path: Path, payload: bytes) -> dict[str, Any]:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(5)
         sock.connect(str(path))
-        sock.sendall(payload)
-        sock.shutdown(socket.SHUT_WR)
+        # The server rejects an oversized message as soon as it passes the limit,
+        # answers and closes, possibly before we finish sending or shut down our
+        # side (ENOTCONN/EPIPE on macOS). Its answer is still there to read.
+        with contextlib.suppress(OSError):
+            sock.sendall(payload)
+            sock.shutdown(socket.SHUT_WR)
         data = b""
         while chunk := sock.recv(4096):
             data += chunk
