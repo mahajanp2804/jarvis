@@ -185,3 +185,62 @@ def test_real_screen_capture_writes_a_png(tmp_path: Path) -> None:
     platform.capture_screen(dest)
     assert dest.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     dest.unlink()
+
+
+@pytest.mark.gui
+@pytest.mark.skipif(
+    os.environ.get("JARVIS_RUN_GUI_TESTS") != "1", reason="set JARVIS_RUN_GUI_TESTS=1 to run"
+)
+def test_two_shortcuts_each_run_only_their_own_action() -> None:
+    """Synthetic Carbon hotkey events go through the same handlers as real key presses."""
+    import ctypes
+    from collections.abc import Callable
+    from typing import Any
+
+    from jarvis.platforms.macos_gui import CarbonHotkeyListener, _EventHotKeyID, _fourcc
+    from jarvis.runtime.hotkeys import Hotkey
+
+    class RecordingLoop:
+        def call_soon(self, fn: Callable[[], Any]) -> None:
+            fn()
+
+    carbon = ctypes.CDLL("/System/Library/Frameworks/Carbon.framework/Carbon")
+    carbon.GetApplicationEventTarget.restype = ctypes.c_void_p
+    carbon.CreateEvent.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_double, ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]  # fmt: skip
+    carbon.SetEventParameter.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_ulong, ctypes.c_void_p,
+    ]  # fmt: skip
+    carbon.SendEventToEventTarget.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    carbon.ReleaseEvent.argtypes = [ctypes.c_void_p]
+
+    def press(hotkey_id: int) -> None:
+        event = ctypes.c_void_p()
+        assert carbon.CreateEvent(None, _fourcc("keyb"), 5, 0.0, 0, ctypes.byref(event)) == 0
+        key = _EventHotKeyID(_fourcc("JRVS"), hotkey_id)
+        assert (
+            carbon.SetEventParameter(
+                event, _fourcc("----"), _fourcc("hkid"), ctypes.sizeof(key), ctypes.byref(key)
+            )
+            == 0
+        )
+        carbon.SendEventToEventTarget(event, carbon.GetApplicationEventTarget())
+        carbon.ReleaseEvent(event)
+
+    pressed: list[str] = []
+    loop: Any = RecordingLoop()
+    first, second = CarbonHotkeyListener(loop), CarbonHotkeyListener(loop)
+    # Unusual combinations, so a running Jarvis service (⌃⌥⌘J / ⌃⌥⌘K) isn't affected.
+    first.register(Hotkey.parse("ctrl+option+cmd+shift+f11"), lambda: pressed.append("first"))
+    second.register(Hotkey.parse("ctrl+option+cmd+shift+f12"), lambda: pressed.append("second"))
+    try:
+        press(first._id)
+        press(second._id)
+        press(second._id)
+        press(9999)  # someone else's hotkey
+        assert pressed == ["first", "second", "second"]
+    finally:
+        first.unregister()
+        second.unregister()
