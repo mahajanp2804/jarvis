@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from jarvis import __version__
 from jarvis import main as cli
 from jarvis.ai.registry import DEFAULT_MODEL
 from tests.fakes import FakeLLM, FakePlatform, ScriptedConfirmer, plan_json
@@ -37,7 +38,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as info:
         cli.main(["--version"])
     assert info.value.code == 0
-    assert "jarvis 0.1.0" in capsys.readouterr().out
+    assert f"jarvis {__version__}" in capsys.readouterr().out
 
 
 def test_run_list(platform: FakePlatform, capsys: pytest.CaptureFixture[str]) -> None:

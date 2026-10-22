@@ -4,15 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-assistant"
-version = "0.1.0"
+dynamic = ["version"]  # from jarvis.__version__
 description = "A local, low-overhead personal AI computer assistant (macOS first, Windows later)."
 readme = "README.md"
 requires-python = ">=3.11"
-keywords = ["assistant", "automation", "llama.cpp", "macos", "agent"]
+authors = [{ name = "Pranav Mahajan" }]
+keywords = ["assistant", "automation", "llama.cpp", "whisper.cpp", "macos", "agent"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
+    "Environment :: MacOS X :: Cocoa",
+    "Intended Audience :: End Users/Desktop",
     "Operating System :: MacOS",
+    "Topic :: Desktop Environment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -50,8 +55,17 @@ dev = [
     "mypy>=1.13,<2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mahajanp2804/jarvis"
+Repository = "https://github.com/mahajanp2804/jarvis"
+Issues = "https://github.com/mahajanp2804/jarvis/issues"
+Changelog = "https://github.com/mahajanp2804/jarvis/blob/main/CHANGELOG.md"
+
 [project.scripts]
 jarvis = "jarvis.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "jarvis.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

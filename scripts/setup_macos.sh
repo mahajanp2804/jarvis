@@ -7,6 +7,7 @@
 # Usage: scripts/setup_macos.sh            (picks a suitable Python)
 #        JARVIS_PYTHON=/path/to/python3 scripts/setup_macos.sh
 #        JARVIS_SKIP_LLM=1 scripts/setup_macos.sh   (rule-based commands only)
+#        JARVIS_TESTED_VERSIONS=1 scripts/setup_macos.sh   (exact versions from constraints-macos.txt)
 #
 # This script never downloads a model. Run `jarvis model download` for that.
 set -euo pipefail
@@ -56,8 +57,12 @@ if [[ ! -d "${VENV_DIR}" ]]; then
 fi
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip >/dev/null
 # Metal is llama.cpp's default on Apple Silicon; stated explicitly for clarity.
+CONSTRAINTS=()
+if [[ "${JARVIS_TESTED_VERSIONS:-0}" == "1" ]]; then
+    CONSTRAINTS=(-c "${REPO_DIR}/constraints-macos.txt")
+fi
 CMAKE_ARGS="${CMAKE_ARGS:--DGGML_METAL=on}" \
-    "${VENV_DIR}/bin/python" -m pip install -e "${REPO_DIR}[${EXTRAS}]"
+    "${VENV_DIR}/bin/python" -m pip install ${CONSTRAINTS[@]+"${CONSTRAINTS[@]}"} -e "${REPO_DIR}[${EXTRAS}]"
 
 echo
 echo "Installed. Next:"

@@ -1,0 +1,48 @@
+# Exact versions Jarvis 0.6.0 was tested with: Python 3.14.3 (Homebrew, arm64),
+# macOS 27.0.1, MacBook Air M4. pyproject.toml only sets compatible ranges; use
+# this file to reproduce the tested set:
+#
+#   JARVIS_TESTED_VERSIONS=1 scripts/setup_macos.sh
+#   (or: pip install -c constraints-macos.txt -e ".[dev,llm,browser,screen,voice]")
+#
+# Regenerate after an upgrade that passed the full test suite:
+#   .venv/bin/pip freeze --exclude-editable > constraints-macos.txt  (then restore this header)
+annotated-types==0.8.0
+certifi==2026.10.19
+cffi==2.1.1
+charset-normalizer==3.5.2
+diskcache==5.6.3
+greenlet==3.5.6
+idna==3.20
+iniconfig==2.3.1
+Jinja2==3.1.6
+librt==0.16.0
+llama_cpp_python==0.3.36
+MarkupSafe==3.0.4
+mypy==1.20.2
+mypy_extensions==1.1.0
+numpy==2.5.4
+packaging==26.3
+pathspec==1.1.1
+platformdirs==4.13.5
+playwright==1.63.0
+pluggy==1.7.0
+pycparser==3.12
+pydantic==2.14.1
+pydantic_core==2.50.1
+pyee==13.0.1
+Pygments==2.21.0
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-CoreML==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Vision==12.2.2
+pytest==9.1.1
+pywhispercpp==1.5.1
+requests==2.34.2
+ruff==0.17.1
+sounddevice==0.5.6
+tqdm==4.70.1
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0
