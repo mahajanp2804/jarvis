@@ -1,4 +1,4 @@
-"""SQLite memory: remembered preferences and task history.
+"""SQLite memory: remembered preferences, task history and saved workflows.
 
 What is stored:
 
@@ -7,6 +7,9 @@ What is stored:
   They are never instructions and never permissions.
 * **Task history**: each request, its outcome and the tools used (with
   arguments shortened), so you can see what Jarvis did.
+* **Workflows**: the steps of a task the user chose to save ("save that as
+  morning setup"), with their exact arguments, so they can be replayed. A
+  replay goes through the same policy and confirmations as the first run.
 
 What never is:
 
@@ -43,12 +46,14 @@ from typing import Any, Literal
 from jarvis.errors import JarvisError, ToolInputError
 from jarvis.logging_setup import mentions_secret, redact, redact_data
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EXPORT_FORMAT = "jarvis-memory"
 
 MAX_PREFERENCES = 50
 MAX_NAME = 40
 MAX_VALUE = 200
+MAX_WORKFLOWS = 50
+MAX_WORKFLOW_STEPS = 20
 _MAX_REQUEST = 500
 _MAX_REPLY = 500
 _MAX_ARGUMENT = 200
@@ -56,15 +61,17 @@ _MAX_ARGUMENT = 200
 NOT_STORED_SECRET = "(not stored: it may contain a password or other secret)"  # noqa: S105
 NOT_STORED_OUTSIDE = "(not stored: it contained outside content)"
 
-Section = Literal["preferences", "history"]
-SECTIONS: tuple[Section, ...] = ("preferences", "history")
+Section = Literal["preferences", "history", "workflows"]
+SECTIONS: tuple[Section, ...] = ("preferences", "history", "workflows")
 _COUNT_SQL: dict[str, str] = {
     "preferences": "SELECT COUNT(*) FROM preferences",
     "history": "SELECT COUNT(*) FROM history",
+    "workflows": "SELECT COUNT(*) FROM workflows",
 }
 _CLEAR_SQL: dict[str, str] = {
     "preferences": "DELETE FROM preferences",
     "history": "DELETE FROM history",
+    "workflows": "DELETE FROM workflows",
 }
 
 _NAME_CHARS = re.compile(r"^[a-z0-9][a-z0-9 ._'-]*$")
@@ -171,6 +178,37 @@ def _clean_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+@dataclass(frozen=True)
+class WorkflowStep:
+    tool: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Workflow:
+    name: str
+    description: str  # the request the steps came from
+    steps: tuple[WorkflowStep, ...]
+    created_at: str
+    runs: int = 0
+    last_run_at: str | None = None
+
+
+def check_workflow_steps(steps: Sequence[WorkflowStep]) -> None:
+    """Refuse workflows that are empty, too long, or carry something secret-looking."""
+    if not steps:
+        raise ToolInputError("There are no completed steps to save.")
+    if len(steps) > MAX_WORKFLOW_STEPS:
+        raise ToolInputError(f"A workflow can have at most {MAX_WORKFLOW_STEPS} steps.")
+    for step in steps:
+        text = json.dumps(step.arguments, ensure_ascii=False)
+        if looks_sensitive(text) or redact_data(step.arguments) != step.arguments:
+            raise ToolInputError(
+                f"The {step.tool} step contains something that looks like a password or key, "
+                "so it can't be saved."
+            )
+
+
 def make_task_record(
     *,
     request: str,
@@ -228,6 +266,16 @@ _MIGRATIONS: dict[int, str] = {
             source TEXT NOT NULL
         );
         CREATE INDEX history_started_at ON history (started_at);
+    """,
+    2: """
+        CREATE TABLE workflows (
+            name TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            steps TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            runs INTEGER NOT NULL DEFAULT 0,
+            last_run_at TEXT
+        );
     """,
 }
 
@@ -423,6 +471,65 @@ class MemoryStore:
             rows = conn.execute(sql, params).fetchall()
         return [_task_from_row(row) for row in rows]
 
+    # -- workflows ------------------------------------------------------------------------
+
+    def save_workflow(
+        self, name: str, description: str, steps: Sequence[WorkflowStep], *, replace: bool = False
+    ) -> Workflow:
+        name = normalise_name(name)
+        check_workflow_steps(steps)
+        if looks_sensitive(description):
+            description = NOT_STORED_SECRET
+        description = _shorten(" ".join(description.split()), _MAX_REQUEST)
+        payload = json.dumps([asdict(s) for s in steps], ensure_ascii=False)
+        stamp = _iso(self._clock())
+        with self._transaction() as conn:
+            exists = conn.execute("SELECT 1 FROM workflows WHERE name = ?", (name,)).fetchone()
+            if exists and not replace:
+                raise ToolInputError(
+                    f"A workflow named '{name}' already exists.",
+                    hint=f"Pick another name, or delete it: jarvis workflow delete '{name}'",
+                )
+            count = conn.execute("SELECT COUNT(*) FROM workflows").fetchone()[0]
+            if not exists and count >= MAX_WORKFLOWS:
+                raise ToolInputError(f"You already have {MAX_WORKFLOWS} workflows.")
+            conn.execute(
+                "INSERT OR REPLACE INTO workflows (name, description, steps, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (name, description, payload, stamp),
+            )
+        return Workflow(name, description, tuple(steps), stamp)
+
+    def workflow(self, name: str) -> Workflow | None:
+        if not self._readable():
+            return None
+        with self._transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM workflows WHERE name = ?", (normalise_name(name),)
+            ).fetchone()
+        return _workflow_from_row(row) if row else None
+
+    def workflows(self) -> list[Workflow]:
+        if not self._readable():
+            return []
+        with self._transaction() as conn:
+            rows = conn.execute("SELECT * FROM workflows ORDER BY name").fetchall()
+        return [_workflow_from_row(row) for row in rows]
+
+    def delete_workflow(self, name: str) -> bool:
+        if not self._readable():
+            return False
+        with self._transaction() as conn:
+            cursor = conn.execute("DELETE FROM workflows WHERE name = ?", (normalise_name(name),))
+        return cursor.rowcount > 0
+
+    def mark_workflow_run(self, name: str) -> None:
+        with self._transaction() as conn:
+            conn.execute(
+                "UPDATE workflows SET runs = runs + 1, last_run_at = ? WHERE name = ?",
+                (_iso(self._clock()), normalise_name(name)),
+            )
+
     # -- inspect, export, clear -----------------------------------------------------------
 
     def counts(self) -> dict[str, int]:
@@ -443,6 +550,7 @@ class MemoryStore:
             "database": str(self.path),
             "preferences": [asdict(p) for p in self.preferences()],
             "history": [asdict(t) for t in reversed(self.history(limit=max(self._max_history, 1)))],
+            "workflows": [asdict(w) for w in self.workflows()],
         }
 
     def clear(self, sections: Sequence[Section] = SECTIONS) -> dict[str, int]:
@@ -461,6 +569,18 @@ class MemoryStore:
             # Rebuild the file so deleted rows don't survive in free pages.
             self._connect().execute("VACUUM")
         return removed
+
+
+def _workflow_from_row(row: sqlite3.Row) -> Workflow:
+    steps = tuple(WorkflowStep(**s) for s in json.loads(row["steps"]))
+    return Workflow(
+        name=row["name"],
+        description=row["description"],
+        steps=steps,
+        created_at=row["created_at"],
+        runs=row["runs"],
+        last_run_at=row["last_run_at"],
+    )
 
 
 def _task_from_row(row: sqlite3.Row) -> TaskRecord:

@@ -14,6 +14,7 @@ Examples::
     jarvis service install          # start at login; shortcut ⌃⌥⌘J opens Jarvis
     jarvis ask "open my browser"    # send a request to the running service
     jarvis memory show              # what Jarvis remembers (also: export, clear)
+    jarvis workflow run "morning setup"   # replay a saved workflow
 
 Exit codes: 0 success (or dry run), 1 error, 3 not executed (denied,
 cancelled, needs clarification, or not understood), 130 interrupted.
@@ -165,6 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_clear.add_argument("--preferences", action="store_true", help="only preferences")
     memory_clear.add_argument("--history", action="store_true", help="only the task history")
+    memory_clear.add_argument("--workflows", action="store_true", help="only saved workflows")
     memory_clear.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     memory_remember = memory_sub.add_parser(
         "remember", parents=[common], help='remember a preference, e.g. editor "VS Code"'
@@ -173,6 +175,19 @@ def build_parser() -> argparse.ArgumentParser:
     memory_remember.add_argument("value", nargs="+")
     memory_forget = memory_sub.add_parser("forget", parents=[common], help="forget a preference")
     memory_forget.add_argument("name", nargs="+")
+
+    workflow = sub.add_parser(
+        "workflow", parents=[common], help="list, show, run or delete saved workflows"
+    )
+    workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True, metavar="ACTION")
+    workflow_sub.add_parser("list", parents=[common], help="list saved workflows")
+    for action, text in [("show", "show a workflow's steps"), ("run", "run a saved workflow")]:
+        workflow_sub.add_parser(action, parents=[common], help=text).add_argument("name", nargs="+")
+    workflow_delete = workflow_sub.add_parser(
+        "delete", parents=[common], help="delete a saved workflow (asks first)"
+    )
+    workflow_delete.add_argument("name", nargs="+")
+    workflow_delete.add_argument("--yes", action="store_true", help="don't ask for confirmation")
 
     sub.add_parser("doctor", parents=[common], help="check the environment and permissions")
     return parser
@@ -362,6 +377,8 @@ def _memory_command(config: JarvisConfig, args: argparse.Namespace) -> int:
             sections.append("preferences")
         if args.history:
             sections.append("history")
+        if args.workflows:
+            sections.append("workflows")
         return memory_cli.clear(config, sections, assume_yes=args.yes)
     if action == "remember":
         return memory_cli.remember(config, args.name, " ".join(args.value))
@@ -413,6 +430,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return service_cli.ask(" ".join(args.text), config)
     if args.command == "memory":
         return _memory_command(config, args)
+    if args.command == "workflow" and args.workflow_command != "run":
+        if args.workflow_command == "list":
+            return memory_cli.workflow_list(config)
+        if args.workflow_command == "show":
+            return memory_cli.workflow_show(config, " ".join(args.name))
+        return memory_cli.workflow_delete(config, " ".join(args.name), assume_yes=args.yes)
     if args.command == "model":
         if args.model_command == "info":
             return model_cli.model_info(config)
@@ -455,6 +478,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return code
         if args.command == "shell":
             return _run_shell(runtime, cancel)
+        if args.command == "workflow":  # run
+            code = _reply_exit(runtime.orchestrator.run_workflow(" ".join(args.name)))
+            _keep_background_processes(runtime)
+            return code
         if args.command == "apps":
             if args.apps_command == "list":
                 arguments: dict[str, object] = {"limit": args.limit}

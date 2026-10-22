@@ -21,7 +21,9 @@ can't act on their own.
 A short in-memory conversation history lets follow-ups like "now quit it" work.
 It is never written to disk and is forgotten after a few idle minutes. With a
 :class:`~jarvis.memory.store.MemoryStore`, each request's outcome is also
-added to the persistent task history (redacted; see that module).
+added to the persistent task history (redacted; see that module), and the
+steps of the last request can be saved as a workflow and replayed later (see
+:mod:`jarvis.agent.workflows`).
 """
 
 from __future__ import annotations
@@ -34,13 +36,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
+
 from jarvis.agent.planner import Plan, PlanAction, Planner, Turn
 from jarvis.agent.router import route
+from jarvis.agent.workflows import WorkflowCommand, parse_workflow_command, steps_to_save
 from jarvis.ai.base import ChatMessage
 from jarvis.api.dispatcher import Dispatcher, ExecutionContext
 from jarvis.api.schemas import ToolCall, ToolResult, ToolStatus
 from jarvis.errors import JarvisError
-from jarvis.memory.store import MemoryStore, make_task_record
+from jarvis.memory.store import MemoryStore, local_time, make_task_record
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +55,9 @@ Instant commands (no AI needed):
   quit <app>              e.g. "quit Music" (asks for confirmation)
   list apps [matching X]  e.g. "list apps matching studio"
   find app <name>         e.g. "find app code"
+  remember that my X is Y e.g. "remember that my editor is Zed"; "forget my editor"
+  save that as <name>     save the last task's steps as a workflow
+  run the <name> workflow replay it (risky steps still ask first); "list workflows"
 Anything else is planned by the local AI model, e.g. "open my browser and notes"."""
 
 # Fast-path failures that changed nothing and that the model may resolve better
@@ -103,9 +111,13 @@ class Orchestrator:
         max_observation_chars: int = 1500,
         clock: Callable[[], float] = time.monotonic,
         memory: MemoryStore | None = None,
+        workflows: MemoryStore | None = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._memory = memory  # task history; None = not recorded
+        self._workflows = workflows  # saved workflows; None = turned off
+        # The previous request and its steps, for "save that as ...".
+        self._last_task: tuple[str, list[StepRecord]] | None = None
         self._router = router
         self._planner = planner
         # Forget the conversation after this much inactivity, so an old exchange
@@ -133,8 +145,25 @@ class Orchestrator:
         started_at = datetime.now(UTC)
         if self._last_activity is not None and now - self._last_activity > self._history_ttl:
             self._history.clear()
+            self._last_task = None
         self._last_activity = now
 
+        command = parse_workflow_command(text) if self._workflows is not None else None
+        if command is not None and self._workflows is not None:
+            reply = self._workflow_command(self._workflows, command)
+        else:
+            reply = self._respond(text)
+            self._last_task = (text, reply.steps)
+
+        self._remember(text, reply.text)
+        self._record(text, reply, started_at, (self._clock() - now) * 1000, source)
+        return reply
+
+    def run_workflow(self, name: str, *, source: str = "cli") -> Reply:
+        """Replay a saved workflow (as if the user had said "run workflow <name>")."""
+        return self.handle(f"run workflow {name}", source=source)
+
+    def _respond(self, text: str) -> Reply:
         call = self._router(text)
         if call is not None and call.tool not in self._dispatcher.registry.names():
             call = None  # e.g. "remember ..." while memory is turned off
@@ -149,13 +178,90 @@ class Orchestrator:
             reply = Reply(AI_DISABLED_TEXT, handled=False)
         else:
             reply = self._plan_and_execute(self._planner, text)
-
-        self._remember(text, reply.text)
-        self._record(text, reply, started_at, (self._clock() - now) * 1000, source)
         return reply
 
     def clear_history(self) -> None:
         self._history.clear()
+        self._last_task = None
+
+    # -- workflows -----------------------------------------------------------------------
+
+    def _workflow_command(self, store: MemoryStore, command: WorkflowCommand) -> Reply:
+        try:
+            if command.action == "list":
+                return self._list_workflows(store)
+            if command.action == "save":
+                return self._save_workflow(store, command.name)
+            return self._replay(store, command.name)
+        except JarvisError as exc:
+            message = exc.message + (f"\n  Hint: {exc.hint}" if exc.hint else "")
+            return Reply(message, handled=False)
+
+    @staticmethod
+    def _list_workflows(store: MemoryStore) -> Reply:
+        saved = store.workflows()
+        if not saved:
+            return Reply('No saved workflows yet. After a task, say "save that as <name>".')
+        lines = ["Saved workflows:"]
+        for workflow in saved:
+            ran = f", last run {local_time(workflow.last_run_at)}" if workflow.last_run_at else ""
+            lines.append(f"  {workflow.name}: {len(workflow.steps)} step(s){ran}")
+        return Reply("\n".join(lines))
+
+    def _save_workflow(self, store: MemoryStore, name: str) -> Reply:
+        if self._last_task is None:
+            return Reply("There's no earlier task in this conversation to save.", handled=False)
+        request, records = self._last_task
+        steps = steps_to_save([(r.call, r.result) for r in records])
+        workflow = store.save_workflow(name, request, steps)
+        lines = [f"Saved workflow '{workflow.name}' with {len(steps)} step(s):"]
+        lines += [
+            f"  {i}. {_describe_call(ToolCall(tool=s.tool, arguments=s.arguments))}"
+            for i, s in enumerate(steps, start=1)
+        ]
+        lines.append(
+            f'Say "run the {workflow.name} workflow" to run it. Risky steps ask again every time.'
+        )
+        return Reply("\n".join(lines))
+
+    def _replay(self, store: MemoryStore, name: str) -> Reply:
+        workflow = store.workflow(name)
+        if workflow is None:
+            known = ", ".join(w.name for w in store.workflows()) or "none yet"
+            return Reply(
+                f"I don't have a workflow called '{name}'. Saved workflows: {known}.",
+                handled=False,
+            )
+        records: list[StepRecord] = []
+        tainted = False
+        stop: str | None = None
+        total = len(workflow.steps)
+        for index, step in enumerate(workflow.steps, start=1):
+            if self._dispatcher.cancel_event.is_set():
+                stop = "Jarvis is stopping."
+                break
+            try:
+                call = ToolCall(tool=step.tool, arguments=step.arguments)
+            except ValidationError:
+                stop = f"Step {index} of the saved workflow is invalid, so I stopped."
+                break
+            self._progress(f"step {index}/{total}: {_describe_call(call)}")
+            result = self._dispatcher.execute(call, ExecutionContext(tainted=tainted))
+            records.append(StepRecord(1, call, result))
+            tainted = tainted or result.untrusted
+            if not result.ok:
+                stop = _hard_stop(result) or f"Step {index} failed, so I stopped the workflow."
+                break
+        if records:
+            store.mark_workflow_run(workflow.name)
+        done = sum(1 for r in records if r.result.ok)
+        return self._finish(
+            records,
+            1,
+            None,
+            stop,
+            final=f"Workflow '{workflow.name}': {done} of {total} step(s) done.",
+        )
 
     # -- agent loop ----------------------------------------------------------------------
 

@@ -53,7 +53,7 @@ def record(store: MemoryStore, request: str, **kwargs: object) -> int:
 
 def test_reading_never_creates_the_database(store: MemoryStore) -> None:
     assert store.preferences() == [] and store.history() == []
-    assert store.counts() == {"preferences": 0, "history": 0}
+    assert store.counts() == {"preferences": 0, "history": 0, "workflows": 0}
     assert store.planner_context() is None
     assert not store.path.exists()
 
@@ -177,14 +177,14 @@ def test_export_and_clear(store: MemoryStore) -> None:
     store.remember("editor", "Zed")
     record(store, "open my unusual-project-name", steps=[("projects.find", "success", {})])
     data = store.export()
-    assert data["format"] == "jarvis-memory" and data["schema_version"] == 1
+    assert data["format"] == "jarvis-memory" and data["schema_version"] == 2
     assert data["preferences"][0]["value"] == "Zed"
     assert data["history"][0]["steps"][0]["tool"] == "projects.find"
     json.dumps(data)  # JSON-ready
 
     assert store.clear(["history"]) == {"history": 1}
-    assert store.counts() == {"preferences": 1, "history": 0}
-    assert store.clear() == {"preferences": 1, "history": 0}
+    assert store.counts() == {"preferences": 1, "history": 0, "workflows": 0}
+    assert store.clear() == {"preferences": 1, "history": 0, "workflows": 0}
     store.close()
     raw = store.path.read_bytes()
     assert b"unusual-project-name" not in raw and b"Zed" not in raw  # not left in free pages

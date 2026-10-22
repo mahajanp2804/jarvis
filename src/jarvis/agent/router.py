@@ -79,11 +79,16 @@ def _clean_app_name(raw: str) -> str | None:
     return name.strip(" \"'") or None
 
 
-def route(text: str) -> ToolCall | None:
-    """Map a simple command to a :class:`ToolCall`, or ``None`` if not recognised."""
+def normalise_command(text: str) -> str:
+    """Collapse spaces and strip "hey Jarvis, please" / "for me." from a request."""
     command = " ".join(text.split())
     command = _POLITE_PREFIX.sub("", command)
-    command = _TRAILING.sub("", command).strip()
+    return _TRAILING.sub("", command).strip()
+
+
+def route(text: str) -> ToolCall | None:
+    """Map a simple command to a :class:`ToolCall`, or ``None`` if not recognised."""
+    command = normalise_command(text)
     if not command:
         return None
 

@@ -239,6 +239,7 @@ def build_runtime(
             max_rounds=config.agent.max_rounds,
             max_observation_chars=config.agent.max_observation_chars,
             memory=memory if config.memory.record_history else None,
+            workflows=memory,
         ),
         catalog=catalog,
         audit=audit,

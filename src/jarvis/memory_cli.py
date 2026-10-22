@@ -1,4 +1,6 @@
-"""CLI handlers for ``jarvis memory ...``: inspect, export and erase the memory.
+"""CLI handlers for ``jarvis memory ...`` and ``jarvis workflow ...``.
+
+Inspect, export and erase the memory; list, show and delete saved workflows.
 
 These work on the database file directly (also when ``[memory] enabled`` is
 false, so a turned-off memory can still be inspected and erased) and are
@@ -60,6 +62,12 @@ def show(config: JarvisConfig, *, limit: int = 10) -> int:
             print(f"  {local_time(task.started_at)}  {task.outcome:<8} {task.request}  [{tools}]")
         if not tasks:
             print("  (none)")
+        flows = store.workflows()
+        print(f"\nWorkflows ({counts['workflows']}):")
+        for flow in flows:
+            print(f"  {flow.name}: {len(flow.steps)} step(s), run {flow.runs} time(s)")
+        if not flows:
+            print('  (none; after a task, say "save that as <name>")')
         return EXIT_OK
     except JarvisError as exc:
         _print_error(exc)
@@ -131,10 +139,15 @@ def clear(
         store.close()
 
 
+_LABELS = {
+    "preferences": ("preference", "preferences"),
+    "history": ("history entry", "history entries"),
+    "workflows": ("workflow", "workflows"),
+}
+
+
 def _amount(section: str, n: int) -> str:
-    one, many = {"preferences": ("preference", "preferences")}.get(
-        section, ("history entry", "history entries")
-    )
+    one, many = _LABELS[section]
     return f"{n} {one if n == 1 else many}"
 
 
@@ -162,6 +175,80 @@ def forget(config: JarvisConfig, name: str) -> int:
             return EXIT_OK
         print(f"Nothing is remembered as '{name}'.")
         return EXIT_NOT_DONE
+    except JarvisError as exc:
+        _print_error(exc)
+        return EXIT_ERROR
+    finally:
+        store.close()
+
+
+# -- workflows ------------------------------------------------------------------------------
+
+
+def workflow_list(config: JarvisConfig) -> int:
+    store = open_store(config)
+    try:
+        flows = store.workflows()
+        if not flows:
+            print('No saved workflows. After a task, say "save that as <name>".')
+        for flow in flows:
+            ran = f", last run {local_time(flow.last_run_at)}" if flow.last_run_at else ""
+            print(f"{flow.name}: {len(flow.steps)} step(s), run {flow.runs} time(s){ran}")
+        return EXIT_OK
+    except JarvisError as exc:
+        _print_error(exc)
+        return EXIT_ERROR
+    finally:
+        store.close()
+
+
+def workflow_show(config: JarvisConfig, name: str) -> int:
+    store = open_store(config)
+    try:
+        flow = store.workflow(name)
+        if flow is None:
+            print(f"No workflow called '{name}'.", file=sys.stderr)
+            return EXIT_NOT_DONE
+        print(f"Workflow:  {flow.name}")
+        print(f"From:      {flow.description}")
+        print(f"Saved:     {local_time(flow.created_at)}; run {flow.runs} time(s)")
+        print("Steps (each one is checked and confirmed again when it runs):")
+        for index, step in enumerate(flow.steps, start=1):
+            print(f"  {index}. {step.tool} {json.dumps(step.arguments, ensure_ascii=False)}")
+        return EXIT_OK
+    except JarvisError as exc:
+        _print_error(exc)
+        return EXIT_ERROR
+    finally:
+        store.close()
+
+
+def workflow_delete(
+    config: JarvisConfig,
+    name: str,
+    *,
+    assume_yes: bool,
+    input_fn: Callable[[str], str] | None = None,
+) -> int:
+    store = open_store(config)
+    try:
+        flow = store.workflow(name)
+        if flow is None:
+            print(f"No workflow called '{name}'.", file=sys.stderr)
+            return EXIT_NOT_DONE
+        if not assume_yes:
+            try:
+                answer = (input_fn or input)(
+                    f"Delete workflow '{flow.name}' ({len(flow.steps)} step(s))? [y/N] "
+                )
+            except EOFError:
+                answer = ""
+            if answer.strip().lower() not in {"y", "yes"}:
+                print("Not deleted.")
+                return EXIT_NOT_DONE
+        store.delete_workflow(flow.name)
+        print(f"Deleted workflow '{flow.name}'.")
+        return EXIT_OK
     except JarvisError as exc:
         _print_error(exc)
         return EXIT_ERROR
