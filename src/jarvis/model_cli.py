@@ -10,7 +10,7 @@ import importlib.metadata
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from jarvis.ai.model_files import (
@@ -173,6 +173,81 @@ def model_download(
         return EXIT_ERROR
     print(f"Downloaded and verified (SHA-256): {dest}")
     return EXIT_OK
+
+
+def evaluate(
+    config: JarvisConfig,
+    platform: PlatformAdapter,
+    *,
+    cases_path: Path | None = None,
+    categories: Sequence[str] = (),
+    limit: int | None = None,
+    json_path: Path | None = None,
+    min_pass: float = 0.0,
+) -> int:
+    """`jarvis eval`: plan every test request with the real model; nothing is executed."""
+    from jarvis.agent.planner import Planner, PlannerSettings
+    from jarvis.evaluation import load_cases, pass_rate, render, run_eval, write_json
+    from jarvis.runtime.permissions import PolicyEngine
+
+    if not config.ai.enabled:
+        print("AI is disabled ([ai] enabled = false); nothing to evaluate.")
+        return EXIT_ERROR
+    path = config.ai.resolved_model_path()
+    if not path.is_file():
+        print(f"Model file not found: {path}\n  Hint: {missing_model_hint(path)}")
+        return EXIT_ERROR
+    try:
+        apps, cases = load_cases(cases_path)
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"Error: can't read the test set: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if categories:
+        cases = [c for c in cases if c.category in categories]
+    cases = cases[:limit] if limit else cases
+
+    # Same safety as the benchmark: planning only, dry run, every confirmation
+    # denied, no memory written or shared, and a throwaway prompt cache so your
+    # saved prompt state is never evicted.
+    with tempfile.TemporaryDirectory(prefix="jarvis-eval-") as tmp:
+        eval_config = config.model_copy(
+            update={
+                "general": config.general.model_copy(update={"dry_run": True}),
+                "ai": config.ai.model_copy(
+                    update={"idle_unload_seconds": 86400.0, "prompt_cache_dir": Path(tmp)}
+                ),
+                "memory": config.memory.model_copy(
+                    update={"record_history": False, "share_preferences": False}
+                ),
+            }
+        )
+        runtime = build_runtime(eval_config, platform, DenyAllConfirmer())
+        if runtime.models is None:  # pragma: no cover - AI enabled above
+            return EXIT_ERROR
+        policy = PolicyEngine(eval_config.policy)
+        ai = eval_config.ai
+        planner = Planner(
+            runtime.models,
+            lambda: [s for s in runtime.registry if policy.is_enabled(s.name)],
+            PlannerSettings(
+                max_steps=ai.max_steps,
+                max_tokens=ai.max_plan_tokens,
+                temperature=ai.temperature,
+                context_tokens=ai.context_length,
+            ),
+            app_names=lambda: apps,
+        )
+        try:
+            print(f"Planning {len(cases)} test requests with the real model (nothing runs)…")
+            results = run_eval(
+                planner, cases, progress=lambda m: print(f"… {m}", file=sys.stderr, flush=True)
+            )
+        finally:
+            runtime.close()
+    print(render(results))
+    if json_path is not None:
+        write_json(results, json_path)
+    return EXIT_OK if pass_rate(results) >= min_pass else EXIT_NOT_DONE
 
 
 def benchmark(

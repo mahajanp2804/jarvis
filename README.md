@@ -116,6 +116,7 @@ jarvis voice voices|say "…"         # spoken replies: list voices, hear the co
 jarvis voice say --voice Tara "…"   # try another voice without changing the config
 jarvis voice download|listen        # push-to-talk: model, and a microphone test
 jarvis voice benchmark              # speech-to-text accuracy and speed, no microphone
+jarvis eval                         # planner accuracy on 92 fixed test requests (nothing runs)
 jarvis voice transcribe FILE.wav    # transcribe a 16 kHz mono WAV
 ```
 

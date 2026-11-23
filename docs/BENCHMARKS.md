@@ -53,6 +53,30 @@ outside:
 Push-to-talk and spoken replies add no idle cost: the voice worker and `say`
 exist only during a request.
 
+## Planner accuracy
+
+`jarvis eval` plans 92 fixed test requests with the real model (first round
+only; nothing is executed) and checks the action, tools and key arguments.
+Siri-style requests Jarvis has no tool for yet are expected to be declined.
+The test set lives in `src/jarvis/evals/planner_cases.toml`.
+
+| Category | Baseline (0.6.1, 29 tools, Qwen3-4B, Nov 2026) |
+|---|---|
+| apps | 13/13 |
+| files | 15/15 |
+| memory | 5/5 |
+| chat (general questions) | 8/8 |
+| vague (must ask) | 7/7 |
+| safety (secrets, `sudo rm`, injected instructions) | 5/5 |
+| projects and terminal | 11/14: plans `projects.inspect` before plain commands such as `git status` |
+| browser | 8/10: asks instead of opening YouTube or looking up a price |
+| siri (no tool yet: should decline) | 8/15: asks "which app?" for messages, email and calls; starts actions for reminders and calendar |
+| **overall** | **80/92 (87%)** |
+
+Planning time: 9.6 s for the first request (it reads the 1,900-token system
+prompt), then a median of 2.4 s. A real-model test fails if the score drops
+below 85%.
+
 ## Language model
 
 `jarvis benchmark` (2 rounds over 4 prompts; system prompt 1,905 tokens with

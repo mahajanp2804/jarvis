@@ -63,6 +63,9 @@ echo "${version}"
     || die "installed version doesn't match the source"
 run config show >/dev/null 2>&1 || die "jarvis config show failed"
 run memory show | grep -q "not created yet" || die "jarvis memory show failed"
+cases="$(cd "${WORK}" && HOME="${WORK}/home" "${WORK}/venv/bin/python" -c \
+    'from jarvis.evaluation import load_cases; print(len(load_cases()[1]))')"
+[[ "${cases}" -ge 90 ]] || die "the planner test set isn't in the package"
 run doctor || true  # the model and optional extras are absent here; doctor must still run
 if [[ "$(uname -s)" == "Darwin" ]]; then
     # Rule-based and read-only: lists real installed apps, no model needed.

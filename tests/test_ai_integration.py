@@ -297,3 +297,38 @@ def test_read_a_file_and_answer(agent: tuple[Runtime, ScriptedConfirmer]) -> Non
     print(f"\nrounds={reply.rounds}\n{reply.text}")
     assert any(s.call.tool == "files.read" for s in reply.steps)
     assert "passport" in reply.text.lower()
+
+
+# Today's score is 80/92 (87%), Nov 2026. Raise the floor as phases improve it;
+# a drop below it means a change made the planner worse.
+EVAL_FLOOR = 0.85
+
+
+def test_planner_test_set_score_does_not_regress(tmp_path: Path) -> None:
+    from jarvis.agent.planner import Planner, PlannerSettings
+    from jarvis.evaluation import load_cases, pass_rate, render, run_eval
+    from jarvis.runtime.permissions import PolicyEngine
+
+    config = JarvisConfig.model_validate(
+        {
+            "general": {"log_dir": str(tmp_path / "logs")},
+            "ai": {"idle_unload_seconds": 3600, "prompt_cache_dir": str(tmp_path / "cache")},
+            "memory": {"path": str(tmp_path / "m.sqlite3")},
+        }
+    )
+    apps, cases = load_cases()
+    runtime = build_runtime(config, FakePlatform(), ScriptedConfirmer(False), poll_interval=0.01)
+    try:
+        assert runtime.models is not None
+        policy = PolicyEngine(config.policy)
+        planner = Planner(
+            runtime.models,
+            lambda: [s for s in runtime.registry if policy.is_enabled(s.name)],
+            PlannerSettings(context_tokens=config.ai.context_length),
+            app_names=lambda: apps,
+        )
+        results = run_eval(planner, cases)
+    finally:
+        runtime.close()
+    print("\n" + render(results))
+    assert pass_rate(results) >= EVAL_FLOOR

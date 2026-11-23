@@ -138,6 +138,17 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("--idle-seconds", type=float, default=10.0, help="idle sample length")
     bench.add_argument("--json", type=Path, help="also write results as JSON")
 
+    evaluate = sub.add_parser(
+        "eval", parents=[common], help="score the planner on a fixed test set (nothing runs)"
+    )
+    evaluate.add_argument("--category", action="append", default=[], help="only this category")
+    evaluate.add_argument("--limit", type=int, help="only the first N cases")
+    evaluate.add_argument("--cases", type=Path, help="another test set (TOML)")
+    evaluate.add_argument("--json", type=Path, help="also write results as JSON")
+    evaluate.add_argument(
+        "--min-pass", type=float, default=0.0, help="exit 3 below this pass rate (0-1)"
+    )
+
     daemon = sub.add_parser(
         "daemon", parents=[common], help="run the background service in the foreground"
     )
@@ -591,6 +602,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             platform,
             config_path=config_arg,
             measure_seconds=getattr(args, "seconds", 30.0),
+        )
+    if args.command == "eval":
+        return model_cli.evaluate(
+            config,
+            platform,
+            cases_path=args.cases,
+            categories=args.category,
+            limit=args.limit,
+            json_path=args.json,
+            min_pass=args.min_pass,
         )
     if args.command == "benchmark":
         return model_cli.benchmark(

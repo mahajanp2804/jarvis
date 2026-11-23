@@ -12,6 +12,10 @@ entries are reconstructed from the commit history.
   renamed Jarvis folder, or simply stopped, each with the fix. `status` also
   shows which Python the login item runs. `jarvis service start` refuses,
   with that explanation, instead of overriding your Login Items switch.
+- `jarvis eval`: plans 92 fixed test requests with the real model (nothing
+  runs) and scores the action, tools and key arguments per category. Baseline
+  80/92 (87%); a real-model test fails below 85%. The test set ships with the
+  package (`jarvis/evals/planner_cases.toml`).
 
 ## 0.6.1: Fixes from real voice use (2026-10-23)
 
