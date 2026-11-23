@@ -450,6 +450,7 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
     else:
         checks.append(DiagnosticCheck("Platform adapter", True, platform.name))
         checks.extend(platform.diagnostics())
+        checks.append(service_cli.service_check(config, platform))
         if PolicyEngine(config.policy).is_enabled("browser.open"):
             checks.append(_browser_check(config))
         if config.voice.push_to_talk:

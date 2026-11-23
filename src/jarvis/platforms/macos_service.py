@@ -16,7 +16,13 @@ The agent file lives at ``~/Library/LaunchAgents/<label>.plist``:
   guards against crash loops and also delays a quick stop/start, which
   ``jarvis service restart`` waits out.
 
-All ``launchctl`` calls use fixed argument lists, with no shell.
+Since macOS 13, the user can switch the agent off in System Settings > General >
+Login Items & Extensions ("Allow in the Background"); it's listed as "Python"
+because Jarvis is a Python program. macOS then unloads it. Jarvis reads that
+switch from the background-task database (``sfltool dumpbtm``, no admin rights
+needed) to explain why it isn't running, and never overrides it.
+
+All ``launchctl`` and ``sfltool`` calls use fixed argument lists, with no shell.
 """
 
 from __future__ import annotations
@@ -34,6 +40,8 @@ from jarvis.errors import JarvisError
 from jarvis.platforms.base import ServiceManager, ServiceStatus
 
 LAUNCHCTL = "/bin/launchctl"
+SFLTOOL = "/usr/bin/sfltool"
+_BTM_RECORD = re.compile(r"^\s*#\d+:\s*$", re.MULTILINE)
 EXIT_TIMEOUT_SECONDS = 20
 # launchd starts a job at most once per this many seconds (crash-loop guard).
 # It also delays manual starts, so `restart` must wait out the window.
@@ -45,6 +53,16 @@ Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 
 class ServiceError(JarvisError):
     """launchd refused an operation."""
+
+
+def background_flags(dump: str, label: str) -> set[str] | None:
+    """Disposition flags (enabled, allowed, ...) of ``label`` in ``sfltool dumpbtm`` output."""
+    identifier = re.compile(rf"^\s*Identifier:\s*\d+\.{re.escape(label)}\s*$", re.MULTILINE)
+    for record in _BTM_RECORD.split(dump):
+        if identifier.search(record):
+            match = re.search(r"^\s*Disposition:\s*\[([^\]]*)\]", record, re.MULTILINE)
+            return {flag.strip() for flag in match.group(1).split(",")} if match else None
+    return None
 
 
 def build_plist(
@@ -72,6 +90,11 @@ def build_plist(
 
 class LaunchAgentService(ServiceManager):
     """Manage the Jarvis Launch Agent with ``launchctl``."""
+
+    background_setting = (
+        "System Settings > General > Login Items & Extensions > Allow in the Background "
+        '(listed as "Python")'
+    )
 
     def __init__(
         self,
@@ -125,6 +148,11 @@ class LaunchAgentService(ServiceManager):
                 "The Jarvis service isn't installed.", hint="Run `jarvis service install`."
             )
         if not status.loaded:
+            # Explain instead of failing obscurely, and never override the user's
+            # "Allow in the Background" switch.
+            blocking = [p for p in self.problems(status) if p.blocks_start]
+            if blocking:
+                raise ServiceError(blocking[0].message, hint=blocking[0].fix)
             self._launchctl("bootstrap", self.domain, str(self.plist_path))
         elif not status.running:
             self._launchctl("kickstart", self.target)
@@ -141,11 +169,14 @@ class LaunchAgentService(ServiceManager):
 
     def status(self) -> ServiceStatus:
         installed = self.plist_path.is_file()
+        program = self._program() if installed else None
         proc = self._run(
             [LAUNCHCTL, "print", self.target], capture_output=True, text=True, timeout=10
         )
         if proc.returncode != 0:
-            return ServiceStatus(installed, False, False, definition=self.plist_path)
+            return ServiceStatus(
+                installed, False, False, definition=self.plist_path, program=program
+            )
         text = proc.stdout
         state = _field(text, "state")
         pid = _field(text, "pid")
@@ -156,7 +187,29 @@ class LaunchAgentService(ServiceManager):
             pid=int(pid) if pid and pid.isdigit() else None,
             last_exit=_field(text, "last exit code"),
             definition=self.plist_path,
+            program=program,
         )
+
+    def allowed_to_run(self) -> bool | None:
+        """The "Allow in the Background" switch (~2.5 s to read; only to explain problems)."""
+        try:
+            proc = self._run([SFLTOOL, "dumpbtm"], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        flags = background_flags(proc.stdout, self.label) if proc.returncode == 0 else None
+        if flags is None:
+            return None
+        if "disallowed" in flags:
+            return False
+        return True if "allowed" in flags else None
+
+    def _program(self) -> Path | None:
+        try:
+            with self.plist_path.open("rb") as fh:
+                arguments = plistlib.load(fh).get("ProgramArguments") or []
+        except (OSError, plistlib.InvalidFileException, ValueError):
+            return None
+        return Path(arguments[0]) if arguments and isinstance(arguments[0], str) else None
 
     # -- internals -------------------------------------------------------------------
 

@@ -4,6 +4,15 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
+## 0.7.0: Foundations for Siri-style features (Phase 7, in progress)
+
+- `jarvis service status` and `jarvis doctor` say why the background service
+  isn't running: switched off in Login Items & Extensions (read from macOS's
+  background-task database with `sfltool dumpbtm`, no admin rights), a moved or
+  renamed Jarvis folder, or simply stopped, each with the fix. `status` also
+  shows which Python the login item runs. `jarvis service start` refuses,
+  with that explanation, instead of overriding your Login Items switch.
+
 ## 0.6.1: Fixes from real voice use (2026-10-23)
 
 - "open-calculator." (a speech-to-text spelling) takes the instant path: a

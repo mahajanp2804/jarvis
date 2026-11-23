@@ -111,10 +111,24 @@ class ServiceStatus:
     pid: int | None = None
     last_exit: str | None = None
     definition: Path | None = None  # e.g. the Launch Agent plist
+    program: Path | None = None  # the executable the service starts
+
+
+@dataclass(frozen=True)
+class ServiceProblem:
+    """Why the installed service isn't running, and what to do about it."""
+
+    message: str
+    fix: str
+    # True when `jarvis service start` can't fix it (the user or setup has to).
+    blocks_start: bool = True
 
 
 class ServiceManager(ABC):
     """Start-at-login service lifecycle (launchd on macOS; Task Scheduler on Windows later)."""
+
+    # Where the user allows or blocks background items in the OS settings.
+    background_setting = "the system's start-up settings"
 
     @abstractmethod
     def install(self, program: Sequence[str], environment: dict[str, str], log_file: Path) -> Path:
@@ -133,6 +147,45 @@ class ServiceManager(ABC):
 
     @abstractmethod
     def status(self) -> ServiceStatus: ...
+
+    def allowed_to_run(self) -> bool | None:
+        """Whether the OS currently lets the service run in the background.
+
+        ``None`` when unknown. Can be slow; call it only to explain a problem.
+        """
+        return None
+
+    def problems(self, status: ServiceStatus | None = None) -> list[ServiceProblem]:
+        """Why an installed service isn't running, most important first. Empty if fine."""
+        status = status or self.status()
+        if not status.installed or status.running:
+            return []
+        found = []
+        if status.program is not None and not status.program.exists():
+            found.append(
+                ServiceProblem(
+                    f"The login item starts {status.program}, which no longer exists. "
+                    "Was the Jarvis folder moved or renamed?",
+                    "From the Jarvis folder, run scripts/setup_macos.sh, "
+                    "then scripts/install_macos.sh.",
+                )
+            )
+        if self.allowed_to_run() is False:
+            found.append(
+                ServiceProblem(
+                    f"Jarvis is switched off in {self.background_setting}.",
+                    "Switch it back on there; Jarvis then starts by itself.",
+                )
+            )
+        if not found:
+            found.append(
+                ServiceProblem(
+                    "Jarvis is installed but not running.",
+                    "Start it: jarvis service start",
+                    blocks_start=False,
+                )
+            )
+        return found
 
 
 class PlatformAdapter(ABC):

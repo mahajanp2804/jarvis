@@ -21,7 +21,7 @@ from jarvis.benchmark import combined_stats
 from jarvis.config import JarvisConfig
 from jarvis.errors import JarvisError
 from jarvis.logging_setup import configure_logging
-from jarvis.platforms.base import PlatformAdapter, ProcessStats
+from jarvis.platforms.base import DiagnosticCheck, PlatformAdapter, ProcessStats, ServiceManager
 from jarvis.runtime.control import send_request
 from jarvis.runtime.lifecycle import Daemon, DaemonPaths
 
@@ -150,8 +150,10 @@ def _duration(seconds: float) -> str:
 
 
 def show_status(config: JarvisConfig, platform: PlatformAdapter) -> int:
+    manager: ServiceManager | None = None
     try:
-        launchd = platform.service_manager(config.service.label).status()
+        manager = platform.service_manager(config.service.label)
+        launchd = manager.status()
     except JarvisError:
         launchd = None
     live = _query()
@@ -164,8 +166,14 @@ def show_status(config: JarvisConfig, platform: PlatformAdapter) -> int:
         installed = "installed" if launchd.installed else "not installed"
         pid = f" (pid {launchd.pid})" if launchd.pid else ""
         print(f"Launch Agent:  {installed}, {state}{pid}")
+        if launchd.program is not None:
+            print(f"Runs:          {launchd.program}")
         if launchd.last_exit and not launchd.running:
             print(f"Last exit:     {launchd.last_exit}")
+        if manager is not None:
+            for problem in manager.problems(launchd):
+                print(f"Problem:       {problem.message}")
+                print(f"  Fix:         {problem.fix}")
     if live is None:
         print("Service:       not answering (not running)")
         return EXIT_NOT_DONE
@@ -267,3 +275,20 @@ def ask(text: str, config: JarvisConfig) -> int:
     if statuses & {"denied", "cancelled", "needs_clarification"}:
         return EXIT_NOT_DONE
     return EXIT_OK
+
+
+def service_check(config: JarvisConfig, platform: PlatformAdapter) -> DiagnosticCheck:
+    """`jarvis doctor`: is the background service installed, allowed and running?"""
+    try:
+        manager = platform.service_manager(config.service.label)
+        status = manager.status()
+    except JarvisError as exc:
+        return DiagnosticCheck("Background service", None, exc.message)
+    if not status.installed:
+        return DiagnosticCheck(
+            "Background service", None, "not installed (scripts/install_macos.sh)"
+        )
+    if status.running:
+        return DiagnosticCheck("Background service", True, f"running ({status.program})")
+    problem = manager.problems(status)[0]
+    return DiagnosticCheck("Background service", False, f"{problem.message} Fix: {problem.fix}")

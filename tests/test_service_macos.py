@@ -11,8 +11,10 @@ import pytest
 
 from jarvis.platforms.macos_service import (
     LAUNCHCTL,
+    SFLTOOL,
     LaunchAgentService,
     ServiceError,
+    background_flags,
     build_plist,
 )
 
@@ -24,6 +26,24 @@ PRINT_RUNNING = """gui/501/local.jarvis.assistant = {
 \tpid = 4242
 \tlast exit code = (never exited)
 }"""
+# Shape of real `sfltool dumpbtm` output (macOS 27), trimmed to three records.
+BTM_DUMP = """ #1:
+                 UUID: 11111111-2222-3333-4444-555555555555
+                 Name: Google Chrome
+          Disposition: [enabled, allowed, notified] (0xb)
+           Identifier: 2.com.google.Chrome
+ #2:
+                 Name: Python
+                 Type: legacy agent (0x10008)
+          Disposition: [{flags}] (0x9)
+           Identifier: 8.local.jarvis.assistant
+                  URL: /Users/501/Library/LaunchAgents/local.jarvis.assistant.plist
+      Executable Path: /Users/501/Desktop/Projects/jarvis/.venv/bin/python
+ #3:
+          Disposition: [disabled, disallowed, notified] (0x8)
+           Identifier: 8.local.jarvis.assistant.other
+"""
+
 PRINT_STOPPED = (
     PRINT_RUNNING.replace("state = running", "state = not running")
     .replace("\tpid = 4242\n", "")
@@ -39,10 +59,14 @@ class FakeLaunchctl:
         self.running = False
         self.calls: list[list[str]] = []
         self.fail: str | None = None
+        self.background = "enabled, allowed, notified"  # what `sfltool dumpbtm` reports
 
     def __call__(self, argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        assert argv[0] == LAUNCHCTL
         assert "shell" not in kwargs and kwargs.get("timeout")
+        if argv[0] == SFLTOOL:
+            assert argv[1:] == ["dumpbtm"]
+            return subprocess.CompletedProcess(argv, 0, BTM_DUMP.format(flags=self.background), "")
+        assert argv[0] == LAUNCHCTL
         command = argv[1]
         if command != "print":
             self.calls.append(argv[1:])
@@ -133,12 +157,19 @@ def test_stop_is_a_graceful_sigterm(
     assert launchctl.calls[-1][0] == "kill" and len(launchctl.calls) == 2
 
 
+def python_in(folder: Path) -> Path:
+    program = folder / ".venv" / "bin" / "python"
+    program.parent.mkdir(parents=True)
+    program.write_text("")
+    return program
+
+
 def test_start_kickstarts_or_bootstraps(
     service: LaunchAgentService, launchctl: FakeLaunchctl, tmp_path: Path
 ) -> None:
     with pytest.raises(ServiceError, match="isn't installed"):
         service.start()
-    service.install(["/py"], {}, tmp_path / "s.log")
+    service.install([str(python_in(tmp_path))], {}, tmp_path / "s.log")
     service.stop()
     service.start()
     assert launchctl.calls[-1] == ["kickstart", "gui/501/local.jarvis.assistant"]
@@ -162,3 +193,59 @@ def test_launchctl_failure_is_reported(
     launchctl.fail = "bootstrap"
     with pytest.raises(ServiceError, match="bootstrap failed: Boom"):
         service.install(["/py"], {}, tmp_path / "s.log")
+
+
+def test_background_flags_are_read_for_our_label_only() -> None:
+    dump = BTM_DUMP.format(flags="enabled, disallowed, notified")
+    flags = background_flags(dump, "local.jarvis.assistant")
+    assert flags == {"enabled", "disallowed", "notified"}  # not the ".other" record
+    assert background_flags(BTM_DUMP, "local.missing") is None
+    assert background_flags("garbage", "local.jarvis.assistant") is None
+
+
+def test_status_reports_the_program_it_runs(service: LaunchAgentService, tmp_path: Path) -> None:
+    program = python_in(tmp_path / "Projects" / "jarvis")
+    service.install([str(program), "-m", "jarvis", "daemon"], {}, tmp_path / "s.log")
+    status = service.status()
+    assert status.program == program
+    assert service.problems(status) == []  # running and allowed
+
+
+def test_switched_off_in_login_items_is_explained_and_respected(
+    service: LaunchAgentService, launchctl: FakeLaunchctl, tmp_path: Path
+) -> None:
+    service.install([str(python_in(tmp_path))], {}, tmp_path / "s.log")
+    launchctl.background = "enabled, disallowed, notified"  # the user switched it off
+    launchctl.loaded = launchctl.running = False  # macOS unloaded it
+    [problem] = service.problems()
+    assert "Login Items & Extensions > Allow in the Background" in problem.message
+    assert '"Python"' in problem.message and "Switch it back on" in problem.fix
+    calls = len(launchctl.calls)
+    with pytest.raises(ServiceError, match="switched off"):
+        service.start()  # never overrides the user's switch
+    assert len(launchctl.calls) == calls
+
+
+def test_moved_folder_is_explained(
+    service: LaunchAgentService, launchctl: FakeLaunchctl, tmp_path: Path
+) -> None:
+    program = python_in(tmp_path / "Project" / "jarvis")
+    service.install([str(program)], {}, tmp_path / "s.log")
+    program.parent.parent.parent.rename(tmp_path / "Project" / "renamed")
+    launchctl.loaded = launchctl.running = False
+    problems = service.problems()
+    assert "no longer exists" in problems[0].message and "moved or renamed" in problems[0].message
+    assert "setup_macos.sh" in problems[0].fix and "install_macos.sh" in problems[0].fix
+    with pytest.raises(ServiceError, match="no longer exists"):
+        service.start()
+
+
+def test_stopped_service_just_needs_a_start(
+    service: LaunchAgentService, launchctl: FakeLaunchctl, tmp_path: Path
+) -> None:
+    service.install([str(python_in(tmp_path))], {}, tmp_path / "s.log")
+    service.stop()
+    [problem] = service.problems()
+    assert problem.message == "Jarvis is installed but not running." and not problem.blocks_start
+    service.start()
+    assert launchctl.calls[-1][0] == "kickstart"
