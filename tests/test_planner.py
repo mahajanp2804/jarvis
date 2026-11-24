@@ -205,3 +205,35 @@ def test_model_is_released_after_planning(make_runtime: MakeRuntime) -> None:
 def test_no_enabled_tools(make_runtime: MakeRuntime) -> None:
     with pytest.raises(PlanningError, match="No tools"):
         make_planner([], FakeLLM()).plan("open safari")
+
+
+def test_tool_profiles_narrow_what_the_model_sees(make_runtime: MakeRuntime) -> None:
+    from jarvis.agent.tool_groups import select_profile
+
+    llm = FakeLLM(
+        plan_json("execute", "Reading.", ("files.read", {"path": "~/Desktop/todo.txt"})),
+        plan_json("respond", "I can't set timers yet."),
+    )
+    planner = Planner(
+        ModelManager(llm, idle_unload_seconds=0),
+        lambda: specs(make_runtime),
+        PlannerSettings(max_steps=3),
+        select_tools=select_profile,
+    )
+    plan = planner.plan("what's on the todo list on my desktop?")
+    assert plan.profile == "files"
+    system, schema = llm.calls[0][0][0]["content"], json.dumps(llm.calls[0][1])
+    assert "files.read(" in system and "apps.open(" in system and "memory.list(" in system
+    assert "terminal.run" not in system and "browser.open" not in system
+    assert "terminal.run" not in schema  # the grammar can't pick a hidden tool either
+
+    timer = planner.plan("set a timer for 10 minutes")  # no keywords: every tool, as before
+    assert timer.profile == "all" and "terminal.run(" in llm.calls[1][0][0]["content"]
+
+
+def test_tool_profiles_are_off_by_default(make_runtime: MakeRuntime, fake_llm: FakeLLM) -> None:
+    runtime, _ = make_runtime()
+    assert runtime.config.ai.tool_profiles is False
+    assert runtime.planner is not None
+    fake_llm.replies.append(plan_json("respond", "Hi."))
+    assert runtime.planner.plan("what's on my desktop?").profile == "all"

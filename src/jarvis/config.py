@@ -164,6 +164,9 @@ class AIConfig(_Section):
     # Give the model the names of installed apps so it can map "my browser" to an
     # app. Names never leave the machine.
     include_app_names: bool = True
+    # Show the model only the tools a request needs (a few fixed profiles chosen by
+    # keywords; see jarvis/agent/tool_groups.py). Measure with `jarvis eval`.
+    tool_profiles: bool = False
     # Save llama.cpp's state for the system prompt to disk, so the first request
     # after a model load doesn't re-read it. Measured on an M4: 7.7 s -> 2.4 s
     # for that request (5.3 s of prompt reading skipped); ~250 MB of disk per
@@ -476,6 +479,8 @@ idle_unload_seconds = 300.0
 # llama.cpp Metal residency keep-alive: ~250 CPU wakeups/s while loaded; off by default.
 metal_residency_sets = false
 include_app_names = true
+# Show the model only the tools a request needs (apps, files, web or dev profile).
+tool_profiles = false
 # Save the system prompt's llama.cpp state to disk (~250 MB) so the first request
 # after a model load skips re-reading it (~5 s faster on an M4).
 prompt_cache = true

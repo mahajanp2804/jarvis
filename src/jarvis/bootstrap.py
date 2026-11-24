@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from jarvis.agent.orchestrator import Orchestrator
 from jarvis.agent.planner import Planner, PlannerSettings
+from jarvis.agent.tool_groups import select_profile
 from jarvis.ai.base import LLMBackend
 from jarvis.ai.llama_cpp_backend import LlamaCppBackend
 from jarvis.ai.model_manager import ModelManager
@@ -225,6 +226,7 @@ def build_runtime(
             ),
             app_names=permitted_app_names if ai.include_app_names else None,
             context=_preferences_context(memory) if config.memory.share_preferences else None,
+            select_tools=select_profile if ai.tool_profiles else None,
         )
 
     return Runtime(
