@@ -50,6 +50,7 @@ class CaseResult:
     tools: list[str]
     seconds: float
     problem: str | None = None
+    profile: str = "all"  # tool profile the model saw
 
 
 def _as_tuple(value: Any) -> tuple[str, ...]:
@@ -141,6 +142,7 @@ def run_eval(
                 tools=[s.tool for s in plan.steps],
                 seconds=round(clock() - started, 2),
                 problem=problem,
+                profile=plan.profile,
             )
         )
     return results
@@ -169,6 +171,10 @@ def render(results: Sequence[CaseResult]) -> str:
         f"Planning time: first {results[0].seconds:.1f}s (reads the system prompt), "
         f"then median {statistics.median(later):.1f}s, slowest {max(later):.1f}s",
     ]
+    profiles = Counter(r.profile for r in results)
+    if set(profiles) != {"all"}:
+        shown = ", ".join(f"{name} {count}" for name, count in sorted(profiles.items()))
+        lines.append(f"Tool profiles: {shown}")
     failed = [r for r in results if not r.passed]
     if failed:
         lines += ["", "Failed:"]

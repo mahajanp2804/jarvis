@@ -184,9 +184,11 @@ def evaluate(
     limit: int | None = None,
     json_path: Path | None = None,
     min_pass: float = 0.0,
+    tool_profiles: bool | None = None,
 ) -> int:
     """`jarvis eval`: plan every test request with the real model; nothing is executed."""
     from jarvis.agent.planner import Planner, PlannerSettings
+    from jarvis.agent.tool_groups import select_profile
     from jarvis.evaluation import load_cases, pass_rate, render, run_eval, write_json
     from jarvis.runtime.permissions import PolicyEngine
 
@@ -214,7 +216,13 @@ def evaluate(
             update={
                 "general": config.general.model_copy(update={"dry_run": True}),
                 "ai": config.ai.model_copy(
-                    update={"idle_unload_seconds": 86400.0, "prompt_cache_dir": Path(tmp)}
+                    update={
+                        "idle_unload_seconds": 86400.0,
+                        "prompt_cache_dir": Path(tmp),
+                        "tool_profiles": config.ai.tool_profiles
+                        if tool_profiles is None
+                        else tool_profiles,
+                    }
                 ),
                 "memory": config.memory.model_copy(
                     update={"record_history": False, "share_preferences": False}
@@ -236,6 +244,7 @@ def evaluate(
                 context_tokens=ai.context_length,
             ),
             app_names=lambda: apps,
+            select_tools=select_profile if ai.tool_profiles else None,
         )
         try:
             print(f"Planning {len(cases)} test requests with the real model (nothing runs)…")

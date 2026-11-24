@@ -148,6 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument(
         "--min-pass", type=float, default=0.0, help="exit 3 below this pass rate (0-1)"
     )
+    evaluate.add_argument(
+        "--profiles", choices=["on", "off"], help="override [ai] tool_profiles for this run"
+    )
 
     daemon = sub.add_parser(
         "daemon", parents=[common], help="run the background service in the foreground"
@@ -612,6 +615,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             limit=args.limit,
             json_path=args.json,
             min_pass=args.min_pass,
+            tool_profiles=None if args.profiles is None else args.profiles == "on",
         )
     if args.command == "benchmark":
         return model_cli.benchmark(
