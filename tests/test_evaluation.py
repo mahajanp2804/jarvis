@@ -26,11 +26,20 @@ def plan(action: str, *steps: tuple[str, dict[str, object]]) -> Plan:
     )
 
 
-def test_bundled_test_set_names_real_tools_and_arguments(make_runtime: MakeRuntime) -> None:
+def test_bundled_test_set_names_real_tools_and_arguments(
+    make_runtime: MakeRuntime, tmp_path: Path
+) -> None:
+    from jarvis.config import BrowserConfig
+    from jarvis.tools.browser import BrowserSession, BrowserTools
+
     apps, cases = load_cases()
     assert len(cases) >= 90 and "Safari" in apps
     runtime, _ = make_runtime(policy={"enabled_tools": ["*"]})
     specs = {spec.name: spec for spec in runtime.registry}
+    # Browser tools are only registered when Playwright is installed (not on Linux CI);
+    # their definitions don't need it.
+    browser = BrowserTools(BrowserSession(BrowserConfig(), tmp_path / "profile"), BrowserConfig())
+    specs.update({spec.name: spec for spec in browser.specs()})
     for case in cases:
         for tools in case.tools:
             assert set(tools) <= set(specs), case.id
