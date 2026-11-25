@@ -23,6 +23,11 @@ entries are reconstructed from the commit history.
   and the decision are in `docs/BENCHMARKS.md`.
 - The prompt-cache cap default is 1 GB (was 512 MB): at 512 MB, alternating
   profiles evicted each other and every request took 3-5 s.
+- `[ai] backend = "server"`: plan through a local model server with an
+  OpenAI-compatible API (llama.cpp's `llama-server`, Ollama, LM Studio), so
+  Jarvis and Hermes Agent can share one model. Schema-constrained replies,
+  local-only by default (`allow_remote_server`), checked by `jarvis doctor`.
+  Tested against a fake server; not yet run against a real `llama-server`.
 
 ## 0.6.1: Fixes from real voice use (2026-10-23)
 

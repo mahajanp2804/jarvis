@@ -470,7 +470,7 @@ Key settings:
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
 | `[agent]` | `max_rounds` (6), `max_tool_retries` (2), `retry_backoff_seconds`, `max_observation_chars` (1500), `history_ttl_seconds` (600) |
-| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false) |
+| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false); `backend` (`llama_cpp`, or `server`), `server_url` (`http://127.0.0.1:8080/v1`), `allow_remote_server` (false) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
 | `[memory]` | `enabled` (true), `path`, `record_history` (true), `history_days` (30), `max_history` (1000), `share_preferences` (true) |
 | `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
@@ -689,6 +689,34 @@ with no platform adapter, evidence that the core is portable).
 * **Logs:** `~/Library/Logs/Jarvis/jarvis.log` (application), `service.log`
   (launchd stdout/stderr), `audit.jsonl` (every action), `processes/`
   (background command output), `voice-worker.log` (last voice request).
+
+### Local model server (optional)
+
+By default Jarvis loads its model itself (`[ai] backend = "llama_cpp"`). With
+`backend = "server"` it plans through a model server you run instead, such as
+llama.cpp's `llama-server`, Ollama or LM Studio, so several programs (for
+example Jarvis and Hermes Agent) can share one loaded model:
+
+```bash
+llama-server -m ~/Library/Application\ Support/Jarvis/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --jinja -c 4096 --port 8080
+```
+
+```toml
+[ai]
+backend = "server"
+server_url = "http://127.0.0.1:8080/v1"
+```
+
+* Plans stay schema-constrained: the plan schema goes in the standard
+  `response_format`, which `llama-server` compiles to a grammar. Jarvis still
+  validates every plan.
+* Jarvis never starts, stops or unloads the server, so idle memory is the
+  server's: the 300 s idle unload doesn't apply.
+* Prompts stay on your Mac: `server_url` must be `localhost`, `127.0.0.1` or
+  `::1` unless you set `allow_remote_server = true`.
+* `jarvis doctor` checks the server answers, and `jarvis eval` works through it.
+* Tested against a local server that imitates `llama-server`'s API; not yet
+  measured against a real `llama-server` on this Mac.
 
 ## Models
 
