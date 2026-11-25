@@ -29,8 +29,9 @@ permission-gated actions on your computer:
   (on-device whisper.cpp); and spoken replies with the built-in macOS voices.
   Both are off by default.
 
-> **Status: all six phases done (version 0.6.0).** Works on macOS (Apple
-> Silicon). Windows is planned, not implemented: see [Roadmap](#roadmap).
+> **Status: version 0.7.0.** The original six phases are done, plus Phase 7,
+> the groundwork for Siri-style features. Works on macOS (Apple Silicon).
+> Windows is planned, not implemented: see [Roadmap](#roadmap).
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -40,6 +41,7 @@ permission-gated actions on your computer:
 | 4 | File, project, terminal, browser (Playwright) and screen tools; multi-step agent loop with verification and bounded retries | ✅ done |
 | 5 | SQLite memory (preferences, task history, workflows) with inspect/export/clear; spoken replies; push-to-talk voice input | ✅ done |
 | 6 | Packaging and portfolio: install and usage docs, CI, packaging check, reproducible benchmarks, Windows roadmap | ✅ done |
+| 7 | Groundwork for Siri-style features: service health checks, planner test set (`jarvis eval`), tool profiles, local model server backend | ✅ done |
 
 **Contents:** [Quick start](#quick-start-macos-apple-silicon) ·
 [Install options and uninstall](#install-options-and-uninstall) · [Tools](#tools) ·
@@ -727,8 +729,19 @@ revision and SHA-256.
 
 ## Roadmap
 
-All six phases of the original plan are done; [`CHANGELOG.md`](CHANGELOG.md)
-lists what each one added. Next:
+The original six phases and Phase 7 are done; [`CHANGELOG.md`](CHANGELOG.md)
+lists what each one added. Next, towards Siri-style features (re-run
+`jarvis eval` after each):
+
+* **Hermes Agent, fully local** (trial first): long tasks on a local 9B model
+  through `llama-server`, reaching the Mac only through Jarvis's tools.
+* **Phase 8, everyday commands:** an Apple Shortcuts bridge, timers, system
+  controls, music, weather.
+* **Phase 9, personal apps:** reminders, calendar, contacts, notes, messages,
+  email, with confirmations that show the exact recipient.
+* **Phase 10, voice:** "Hey Jarvis" (off by default until its battery cost is
+  measured), follow-up questions, other languages.
+* **Phase 11, n8n** for online services, and commands from your iPhone.
 
 * **Windows**, milestones W0–W6 in [`docs/WINDOWS.md`](docs/WINDOWS.md),
   starting with a `windows-latest` CI job for the core.

@@ -4,7 +4,7 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
-## 0.7.0: Foundations for Siri-style features (Phase 7, in progress)
+## 0.7.0: Foundations for Siri-style features (Phase 7, 2026-11-25)
 
 - `jarvis service status` and `jarvis doctor` say why the background service
   isn't running: switched off in Login Items & Extensions (read from macOS's
