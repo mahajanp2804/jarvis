@@ -196,7 +196,7 @@ def evaluate(
         print("AI is disabled ([ai] enabled = false); nothing to evaluate.")
         return EXIT_ERROR
     path = config.ai.resolved_model_path()
-    if not path.is_file():
+    if config.ai.backend == "llama_cpp" and not path.is_file():
         print(f"Model file not found: {path}\n  Hint: {missing_model_hint(path)}")
         return EXIT_ERROR
     try:
@@ -271,7 +271,7 @@ def benchmark(
         print("AI is disabled ([ai] enabled = false); nothing to benchmark.")
         return EXIT_ERROR
     path = config.ai.resolved_model_path()
-    if not path.is_file():
+    if config.ai.backend == "llama_cpp" and not path.is_file():
         print(f"Model file not found: {path}\n  Hint: {missing_model_hint(path)}")
         return EXIT_ERROR
 

@@ -406,6 +406,15 @@ def _browser_check(config: JarvisConfig) -> DiagnosticCheck:
 def _ai_checks(config: JarvisConfig) -> list[DiagnosticCheck]:
     if not config.ai.enabled:
         return [DiagnosticCheck("Local AI", None, "disabled ([ai] enabled = false)")]
+    if config.ai.backend == "server":
+        from jarvis.ai.server_backend import ServerBackend
+
+        server = ServerBackend(config.ai.server_url, model=config.ai.server_model)
+        try:
+            server.load()
+        except JarvisError as exc:
+            return [DiagnosticCheck("Model server", False, f"{exc.message} {exc.hint or ''}")]
+        return [DiagnosticCheck("Model server", True, server.describe())]
     version = model_cli.llama_cpp_version()
     checks = [
         DiagnosticCheck(

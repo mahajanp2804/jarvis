@@ -18,6 +18,7 @@ from jarvis.ai.base import LLMBackend
 from jarvis.ai.llama_cpp_backend import LlamaCppBackend
 from jarvis.ai.model_manager import ModelManager
 from jarvis.ai.prompt_cache import PromptCache
+from jarvis.ai.server_backend import ServerBackend
 from jarvis.ai.subprocess_backend import SubprocessBackend
 from jarvis.api.dispatcher import Dispatcher, RetryPolicy
 from jarvis.config import AIConfig, JarvisConfig
@@ -88,6 +89,10 @@ def build_path_policy(config: JarvisConfig) -> PathPolicy:
 
 def build_backend(ai: AIConfig) -> LLMBackend:
     """Create the configured model backend (nothing is loaded yet)."""
+    if ai.backend == "server":
+        return ServerBackend(
+            ai.server_url, model=ai.server_model, timeout=ai.server_timeout_seconds
+        )
     if ai.isolation == "subprocess":
         return SubprocessBackend(
             {

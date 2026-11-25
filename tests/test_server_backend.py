@@ -147,3 +147,86 @@ def test_planner_works_through_the_server(server: FakeModelServer, make_runtime:
     assert (
         sent["messages"][0]["role"] == "system" and "apps.open(" in sent["messages"][0]["content"]
     )
+
+
+# -- configuration and commands ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed"),
+    [
+        ("http://127.0.0.1:8080/v1", True),
+        ("http://localhost:11434/v1", True),
+        ("http://[::1]:8080/v1", True),
+        ("http://192.168.1.20:8080/v1", False),  # another machine: prompts would leave the Mac
+        ("https://api.example.com/v1", False),
+        ("ftp://127.0.0.1/v1", False),
+    ],
+)
+def test_server_url_must_stay_on_this_mac(url: str, allowed: bool) -> None:
+    from pydantic import ValidationError
+
+    from jarvis.config import JarvisConfig
+
+    data = {"ai": {"backend": "server", "server_url": url}}
+    if allowed:
+        JarvisConfig.model_validate(data)
+    else:
+        with pytest.raises(ValidationError, match="server_url"):
+            JarvisConfig.model_validate(data)
+    if url.startswith("http"):  # an explicit opt-in allows another machine
+        data["ai"]["allow_remote_server"] = True  # type: ignore[index]
+        JarvisConfig.model_validate(data)
+
+
+def test_config_selects_the_server_backend() -> None:
+    from jarvis.bootstrap import build_backend
+    from jarvis.config import JarvisConfig
+
+    config = JarvisConfig.model_validate(
+        {"ai": {"backend": "server", "server_model": "qwen", "server_timeout_seconds": 30}}
+    )
+    backend = build_backend(config.ai)
+    assert isinstance(backend, ServerBackend)
+    assert backend.base_url == "http://127.0.0.1:8080/v1" and backend.model == "qwen"
+
+
+@pytest.fixture
+def server_cli(
+    server: FakeModelServer, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> FakeModelServer:
+    from jarvis import main as cli
+    from tests.fakes import FakePlatform
+
+    config = tmp_path / "config.toml"
+    config.write_text(f'[ai]\nbackend = "server"\nserver_url = "{server.url}"\n')
+    monkeypatch.setenv("JARVIS_CONFIG", str(config))
+    monkeypatch.setenv("JARVIS_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("JARVIS_MODEL_PATH", str(tmp_path / "no-model.gguf"))  # not needed
+    monkeypatch.setattr(cli, "get_platform", lambda: FakePlatform())
+    return server
+
+
+def test_eval_runs_through_the_server_without_a_model_file(
+    server_cli: FakeModelServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from jarvis import main as cli
+
+    assert cli.main(["eval", "--category", "chat", "--limit", "2"]) == cli.EXIT_OK
+    assert "chat 2/2" in " ".join(capsys.readouterr().out.split())
+    assert [r[1] for r in server_cli.requests].count("/v1/chat/completions") == 2
+
+
+def test_doctor_checks_the_server(
+    server_cli: FakeModelServer, capsys: pytest.CaptureFixture[str], tmp_path: Any
+) -> None:
+    from jarvis import main as cli
+
+    cli.main(["doctor"])
+    assert "✓ Model server: model server at http://127.0.0.1" in capsys.readouterr().out
+    (tmp_path / "config.toml").write_text(
+        '[ai]\nbackend = "server"\nserver_url = "http://127.0.0.1:9/v1"\n'
+    )
+    assert cli.main(["doctor"]) == cli.EXIT_ERROR
+    out = capsys.readouterr().out
+    assert "✗ Model server: No answer from the model server" in out and "llama-server" in out

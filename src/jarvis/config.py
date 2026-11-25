@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+import urllib.parse
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -42,6 +43,8 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 # Tool groups enabled by default ("*" wildcards). Screen capture is opt-in:
 # add "screen.*" to use it.
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
 DEFAULT_TOOLS = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*"]
 
 
@@ -135,7 +138,16 @@ class AIConfig(_Section):
     """Local language model used for requests the rule-based router can't handle."""
 
     enabled: bool = True
-    backend: Literal["llama_cpp"] = "llama_cpp"
+    # "llama_cpp": the built-in model (below). "server": a local model server you run
+    # yourself (llama-server, Ollama, LM Studio), e.g. so Jarvis and Hermes Agent
+    # share one model. Jarvis never starts or stops it.
+    backend: Literal["llama_cpp", "server"] = "llama_cpp"
+    server_url: str = "http://127.0.0.1:8080/v1"
+    # Model name for servers that host several; empty = the server's first model.
+    server_model: str = ""
+    server_timeout_seconds: float = Field(default=180.0, gt=0, le=3600)
+    # Prompts stay on this Mac: server_url must be localhost unless this is true.
+    allow_remote_server: bool = False
     # "subprocess": run the model in a worker process, so unloading frees all of
     # its memory, a running request can be aborted at shutdown, and a native
     # crash can't take Jarvis down. "in_process": no worker (slightly faster load).
@@ -191,6 +203,18 @@ class AIConfig(_Section):
 
     def resolved_prompt_cache_dir(self) -> Path:
         return self.prompt_cache_dir or default_prompt_cache_dir()
+
+    @model_validator(mode="after")
+    def _local_server_only(self) -> AIConfig:
+        url = urllib.parse.urlsplit(self.server_url)
+        if url.scheme not in {"http", "https"} or not url.hostname:
+            raise ValueError("server_url must be an http:// or https:// address")
+        if not self.allow_remote_server and url.hostname not in _LOOPBACK:
+            raise ValueError(
+                f"server_url points at {url.hostname}, so prompts would leave this Mac; "
+                "use localhost / 127.0.0.1, or set allow_remote_server = true"
+            )
+        return self
 
 
 DEFAULT_PROJECT_ROOTS = (
@@ -465,7 +489,15 @@ app_blocklist = []
 [ai]
 # Use the local model for requests the built-in rules don't understand.
 enabled = true
+# "llama_cpp" (built in) or "server": a local model server you run yourself
+# (llama-server, Ollama, LM Studio), e.g. so Jarvis and Hermes Agent share one model.
 backend = "llama_cpp"
+server_url = "http://127.0.0.1:8080/v1"
+# Empty = the server's first model.
+server_model = ""
+server_timeout_seconds = 180.0
+# Prompts stay on this Mac: server_url must be localhost unless this is true.
+allow_remote_server = false
 # "subprocess" (model in a worker process; fully freed on unload) or "in_process".
 isolation = "subprocess"
 # Uncomment to use a different GGUF file. Default:
