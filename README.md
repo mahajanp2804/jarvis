@@ -470,7 +470,7 @@ Key settings:
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
 | `[agent]` | `max_rounds` (6), `max_tool_retries` (2), `retry_backoff_seconds`, `max_observation_chars` (1500), `history_ttl_seconds` (600) |
-| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (512) |
+| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
 | `[memory]` | `enabled` (true), `path`, `record_history` (true), `history_days` (30), `max_history` (1000), `share_preferences` (true) |
 | `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
@@ -552,8 +552,9 @@ already in memory takes 2.27 s. Shorter replies are faster (1.4–1.6 s).
   tools and the installed-app list are part of it), the model file (name, size,
   modification time), the context length, the chat format and the
   llama-cpp-python version. A change means one full read (~7.8 s) and a new file.
-* **Capped** at `prompt_cache_max_mb` (512 MB: the current prompt and one
-  earlier version); least recently used files are deleted first.
+* **Capped** at `prompt_cache_max_mb` (1 GB: room for the five prompts of
+  `tool_profiles`, or the current prompt and earlier versions); least recently
+  used files are deleted first.
 * **Safe to delete** at any time; it's rebuilt on the next request. `jarvis model info`
   shows its size.
 * **Checked:** files are written to a temporary name and renamed, and carry a

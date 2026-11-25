@@ -172,8 +172,11 @@ class AIConfig(_Section):
     # for that request (5.3 s of prompt reading skipped); ~250 MB of disk per
     # saved prompt, no extra memory. See README "Prompt cache on disk".
     prompt_cache: bool = True
-    # Disk cap; least recently used prompts are deleted beyond it.
-    prompt_cache_max_mb: int = Field(default=512, ge=1, le=65536)
+    # Disk cap; least recently used prompts are deleted beyond it. Room for the
+    # five prompts of tool_profiles (887 MB measured); with profiles off only one
+    # prompt (~250 MB) is ever saved. Below what they need, alternating profiles
+    # evict each other and every request re-reads its prompt (3-5 s instead of ~1.5 s).
+    prompt_cache_max_mb: int = Field(default=1024, ge=1, le=65536)
     # Unset = ~/Library/Application Support/Jarvis/prompt-cache on macOS.
     prompt_cache_dir: Path | None = None
 
@@ -484,7 +487,8 @@ tool_profiles = false
 # Save the system prompt's llama.cpp state to disk (~250 MB) so the first request
 # after a model load skips re-reading it (~5 s faster on an M4).
 prompt_cache = true
-prompt_cache_max_mb = 512
+# Room for the five prompts of tool_profiles (~900 MB); one prompt otherwise.
+prompt_cache_max_mb = 1024
 # Uncomment to override the default (~/Library/Application Support/Jarvis/prompt-cache).
 # prompt_cache_dir = "~/Library/Application Support/Jarvis/prompt-cache"
 
