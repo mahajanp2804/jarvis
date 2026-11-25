@@ -77,6 +77,30 @@ Planning time: 9.6 s for the first request (it reads the 1,900-token system
 prompt), then a median of 2.4 s. A real-model test fails if the score drops
 below 85%.
 
+## Tool profiles (`[ai] tool_profiles`, off by default)
+
+With profiles on, a request sees only the tools of one of four fixed profiles
+(apps, files, web, dev), chosen by keywords, or every tool when nothing
+matches (see `src/jarvis/agent/tool_groups.py`). Measured on the 92-request
+test set and on requests that alternate between profiles:
+
+| | Profiles off (today) | Profiles on |
+|---|---|---|
+| `jarvis eval` score | 80/92 (87%) | 80/92 (87%): browser +1, projects -1 |
+| `jarvis eval` planning time | first 9.6 s, median 2.4 s | first 5.0 s, median 1.6 s |
+| System prompt (19 test apps) | 1,670 tokens | 755 (apps) / 1,143 (files) / 1,301 (web) / 1,528 (dev) / 1,670 (all) |
+| Requests alternating profiles, 512 MB cache cap | n/a | 3.0-5.3 s each: the saved prompts evict each other, so every request re-reads its prompt |
+| The same with a 1.2 GB cap | 1.5-2.4 s | first use of each profile 4.3-5.3 s; afterwards 1.3-2.1 s (state restored from disk) |
+| Saved prompt state on disk | ~250 MB (1 prompt) | 887 MB (5 prompts) |
+
+**Decision (Nov 2026): off for now.** With 29 tools the gain is small (no
+accuracy change, ~0.3 s faster per request), and it costs about 640 MB more
+disk plus a slow first request per profile whenever the prompt changes (for
+example after installing an app). It's the plan for Phases 8-9, when new tools
+would push the full prompt towards the 4,096-token context: switch it on and
+re-run `jarvis eval --profiles on`. The cache cap default is now 1 GB so the
+profiles never evict each other.
+
 ## Language model
 
 `jarvis benchmark` (2 rounds over 4 prompts; system prompt 1,905 tokens with

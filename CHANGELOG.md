@@ -16,6 +16,13 @@ entries are reconstructed from the commit history.
   runs) and scores the action, tools and key arguments per category. Baseline
   80/92 (87%); a real-model test fails below 85%. The test set ships with the
   package (`jarvis/evals/planner_cases.toml`).
+- Tool profiles (`[ai] tool_profiles`, off by default): a request can see only
+  the tools of one of four keyword-chosen profiles (apps, files, web, dev), in
+  both the prompt and the grammar. `jarvis eval --profiles on|off` compares
+  the two. Same score (87%) and faster planning, but more disk; measurements
+  and the decision are in `docs/BENCHMARKS.md`.
+- The prompt-cache cap default is 1 GB (was 512 MB): at 512 MB, alternating
+  profiles evicted each other and every request took 3-5 s.
 
 ## 0.6.1: Fixes from real voice use (2026-10-23)
 
