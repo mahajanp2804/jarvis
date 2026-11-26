@@ -65,6 +65,31 @@ _DECLINE = re.compile(
 )
 
 
+# Settings the system tools can't change. A small model has planned
+# system.volume for "set my screen brightness to 50%" and system.wifi for
+# "turn on do not disturb", both of which run without asking. Such a plan is
+# rejected with a corrective retry unless the request also mentions sound or
+# Wi-Fi ("dim the screen and mute the sound").
+_OTHER_SETTINGS = re.compile(
+    r"\b(?:brightness|brighter|dimmer|dim the|do not disturb|don't disturb|focus mode"
+    r"|night shift|bluetooth|true tone)\b",
+    re.IGNORECASE,
+)
+_SOUND_WORDS = re.compile(r"\b(?:volume|sound|mute|unmute|louder|quieter|audio)\b", re.I)
+_WIFI_WORDS = re.compile(r"\b(?:wi-?fi|wireless|internet)\b", re.IGNORECASE)
+
+
+def wrong_setting(request: str, tools: Sequence[str]) -> str | None:
+    """Why a plan changes the wrong setting for ``request`` (None if it doesn't)."""
+    if not _OTHER_SETTINGS.search(request):
+        return None
+    if "system.volume" in tools and not _SOUND_WORDS.search(request):
+        return "system.volume only changes the sound, not this setting"
+    if "system.wifi" in tools and not _WIFI_WORDS.search(request):
+        return "system.wifi only turns Wi-Fi on or off, not this setting"
+    return None
+
+
 def declines(message: str) -> bool:
     """True when a clarify message is really "I can't do that"."""
     return bool(_DECLINE.match(message.strip()))
@@ -411,6 +436,21 @@ class Planner:
                                 "role": "user",
                                 "content": f"That plan was rejected: {last_error}. "
                                 "Reply again with a corrected JSON plan.",
+                            },
+                        ]
+                    )
+                    continue
+                steps = [step.tool for step in getattr(parsed, "steps", [])]
+                if problem := wrong_setting(request, steps):
+                    last_error = problem
+                    log.warning("Wrong setting in plan (attempt %d): %s", attempt, problem)
+                    messages.extend(
+                        [
+                            {"role": "assistant", "content": completion.text},
+                            {
+                                "role": "user",
+                                "content": f"That plan was rejected: {problem}. Use shortcuts.list "
+                                "to find a shortcut for it, or say you can't.",
                             },
                         ]
                     )

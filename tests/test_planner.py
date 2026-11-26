@@ -16,6 +16,7 @@ from jarvis.agent.planner import (
     build_plan_model,
     declines,
     describe_tool,
+    wrong_setting,
 )
 from jarvis.ai.model_manager import ModelManager
 from jarvis.api.schemas import RiskLevel, ToolCall
@@ -166,6 +167,38 @@ def test_a_clarify_that_declines_is_a_reply(
     assert plan.action is action and plan.message == message
     assert json.loads(plan.raw)["action"] == action.value  # what later rounds replay
     assert declines(message) is (action is PlanAction.RESPOND)
+
+
+@pytest.mark.parametrize(
+    ("request_text", "tools", "wrong"),
+    [
+        ("set my screen brightness to 50%", ["system.volume"], True),
+        ("turn on do not disturb", ["system.wifi"], True),
+        ("turn on bluetooth", ["system.volume"], True),
+        ("set my screen brightness to 50%", ["shortcuts.list"], False),
+        ("dim the screen and mute the sound", ["system.volume"], False),  # both named
+        ("turn off wifi and bluetooth", ["system.wifi"], False),
+        ("turn up the volume", ["system.volume"], False),  # not another setting
+        ("mute, I need to focus", ["system.volume"], False),  # "focus" alone isn't Focus
+    ],
+)
+def test_wrong_setting(request_text: str, tools: list[str], wrong: bool) -> None:
+    assert (wrong_setting(request_text, tools) is not None) is wrong
+
+
+def test_a_plan_for_the_wrong_setting_gets_a_corrective_retry(make_runtime: MakeRuntime) -> None:
+    llm = FakeLLM(
+        plan_json("execute", "Setting it.", ("system.volume", {"level": 50})),
+        plan_json("execute", "Looking.", ("shortcuts.list", {"query": "brightness"}), finish=False),
+    )
+    plan = make_planner(specs(make_runtime), llm).plan("set my screen brightness to 50%")
+    assert [s.tool for s in plan.steps] == ["shortcuts.list"] and plan.attempts == 2
+    retry = llm.calls[1][0][-1]["content"]
+    assert retry.startswith("That plan was rejected: system.volume only changes the sound")
+
+    stubborn = FakeLLM(*[plan_json("execute", "x", ("system.volume", {"level": 50}))] * 3)
+    with pytest.raises(PlanningError, match="did not produce a valid plan"):
+        make_planner(specs(make_runtime), stubborn).plan("set my screen brightness to 50%")
 
 
 def test_prompt_contents(make_runtime: MakeRuntime) -> None:
