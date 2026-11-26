@@ -451,6 +451,33 @@ def _voice_input_check(config: JarvisConfig) -> DiagnosticCheck:
     return DiagnosticCheck("Push-to-talk", True, detail)
 
 
+def _timers_check(config: JarvisConfig) -> DiagnosticCheck:
+    """Pending timers and alarms; never creates the database."""
+    from datetime import datetime
+
+    from jarvis.timers.store import TimerStore
+    from jarvis.tools.timers import describe_timer
+
+    path = config.timers.resolved_path()
+    if not path.exists():
+        return DiagnosticCheck("Timers", None, "none set yet")
+    store = TimerStore(path)
+    try:
+        pending = store.pending()
+    except JarvisError as exc:
+        return DiagnosticCheck("Timers", False, f"{exc.message} {exc.hint or ''}".strip())
+    finally:
+        store.close()
+    if not pending:
+        return DiagnosticCheck("Timers", None, "none pending")
+    next_one = describe_timer(pending[0], datetime.now().astimezone())
+    return DiagnosticCheck(
+        "Timers",
+        None,
+        f"{len(pending)} pending, next: {next_one}. They ring while the service runs.",
+    )
+
+
 def _doctor(config: JarvisConfig, config_path: Path) -> int:
     checks = [
         DiagnosticCheck(
@@ -485,6 +512,8 @@ def _doctor(config: JarvisConfig, config_path: Path) -> int:
                 checks.append(DiagnosticCheck("Spoken replies", True, f"on ({name})"))
             except JarvisError as exc:
                 checks.append(DiagnosticCheck("Spoken replies", False, exc.message))
+        if PolicyEngine(config.policy).is_enabled("timers.start"):
+            checks.append(_timers_check(config))
         if PolicyEngine(config.policy).is_enabled("screen.read_text"):
             allowed = platform.screen_capture_allowed()
             detail = {

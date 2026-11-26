@@ -188,6 +188,21 @@ def test_doctor(platform: FakePlatform, capsys: pytest.CaptureFixture[str]) -> N
     assert "✓ Fake platform: ok" in out
     assert "Application discovery: 7 apps" in out
     assert "✗ Model file" in out
+    assert "• Timers: none set yet" in out
+
+
+def test_doctor_lists_pending_timers(
+    platform: FakePlatform, private_timers: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from jarvis.timers.store import TimerStore
+
+    TimerStore(private_timers).add("timer", datetime.now(UTC) + timedelta(minutes=9), "pasta")
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "• Timers: 1 pending, next: “pasta” timer: " in out
+    assert "They ring while the service runs." in out
 
 
 def test_shell_session(
