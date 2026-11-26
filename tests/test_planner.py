@@ -14,6 +14,7 @@ from jarvis.agent.planner import (
     PlannerSettings,
     PlanningError,
     build_plan_model,
+    declines,
     describe_tool,
 )
 from jarvis.ai.model_manager import ModelManager
@@ -142,6 +143,29 @@ def test_execute_plan(make_runtime: MakeRuntime) -> None:
         ToolCall(tool="apps.list", arguments={"query": "photo", "limit": 50}),
     )
     assert plan.attempts == 1
+
+
+@pytest.mark.parametrize(
+    ("message", "action"),
+    [
+        ("I can't set alarms. Would you like help with something else?", PlanAction.RESPOND),
+        ("I don\u2019t have a tool to set a timer. Should I open Clock?", PlanAction.RESPOND),
+        ("I'm unable to send messages. Anything else?", PlanAction.RESPOND),
+        ("I don't have a timer application available. Another way?", PlanAction.RESPOND),
+        ("I don't have enough details. Which file?", PlanAction.CLARIFY),
+        ("I can't tell which project you mean: shop or web?", PlanAction.CLARIFY),
+        ("I can't find notes.txt. Which folder is it in?", PlanAction.CLARIFY),
+        ("Which messaging app should I use?", PlanAction.CLARIFY),
+    ],
+)
+def test_a_clarify_that_declines_is_a_reply(
+    make_runtime: MakeRuntime, message: str, action: PlanAction
+) -> None:
+    """A decline phrased as a question shouldn't leave Jarvis waiting for an answer."""
+    plan = make_planner(specs(make_runtime), FakeLLM(plan_json("clarify", message))).plan("x")
+    assert plan.action is action and plan.message == message
+    assert json.loads(plan.raw)["action"] == action.value  # what later rounds replay
+    assert declines(message) is (action is PlanAction.RESPOND)
 
 
 def test_prompt_contents(make_runtime: MakeRuntime) -> None:

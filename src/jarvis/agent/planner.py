@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -47,6 +48,26 @@ class PlanAction(StrEnum):
     EXECUTE = "execute"
     CLARIFY = "clarify"
     RESPOND = "respond"
+
+
+# Small models often phrase "I can't do that" as a question ("I can't set
+# alarms. Would you like help with something else?"). That's a decline, not a
+# question Jarvis should wait for an answer to. "I can't tell which …" and
+# "I can't find …" are real questions and stay questions.
+_DECLINE = re.compile(
+    r"^(?:sorry,?\s+)?i(?:\s+|['\u2019])(?:"
+    r"(?:can['\u2019]?t|cannot|can not|am unable to|m unable to|am not able to|m not able to)"
+    r"(?!\s+(?:tell|find|see|determine|figure|work out|be sure|know|identify|guess)\b)"
+    r"|(?:don['\u2019]t|do not) have (?:(?:a|an|any|the)\s+)?(?:\w+\s+){0,2}?"
+    r"(?:tools?|apps?|applications?|ability|capability|access|control|way)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def declines(message: str) -> bool:
+    """True when a clarify message is really "I can't do that"."""
+    return bool(_DECLINE.match(message.strip()))
 
 
 class PlanningError(JarvisError):
@@ -432,6 +453,11 @@ class Planner:
     def _to_plan(
         parsed: BaseModel, attempts: int, completions: list[Completion], profile: str = "all"
     ) -> Plan:
+        if getattr(parsed, "action", None) == PlanAction.CLARIFY and declines(
+            getattr(parsed, "message", "")
+        ):
+            log.info("Treating a clarify that declines as a reply")
+            parsed = parsed.model_copy(update={"action": PlanAction.RESPOND.value})
         data = parsed.model_dump(exclude_none=True)
         steps = tuple(
             ToolCall(tool=step["tool"], arguments=step.get("arguments", {}))
