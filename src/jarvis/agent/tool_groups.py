@@ -42,12 +42,16 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
         # Words that suggest the web but also appear in project and folder names
         # ("Stock Price Predictor", "~/Code/web"): ignored when the request is
         # about a project or the terminal.
-        "browser_weak": r"\b(?:web|site|search|look up|news|weather|price|page|recipe)\b",
+        "browser_weak": r"\b(?:web|site|search|look up|news|price|page|recipe)\b",
         "screen": r"\b(?:screen|screenshot)\b",
         "shortcuts": r"\bshortcuts?\b",
         "system": (
             r"\b(?:volume|louder|quieter|mute|unmute|sound|wi-?fi|battery|charging|dark mode"
             r"|(?:screen|display) off|turn off the (?:screen|display))\b"
+        ),
+        "weather": (
+            r"\b(?:weather|forecast|temperature|rain(?:ing|y)?|snow(?:ing|y)?|umbrella|sunny"
+            r"|humid(?:ity)?)\b"
         ),
         "music": (
             r"\b(?:music|songs?|playlists?|albums?|play(?:ing)?|pause|resume|skip|track"
@@ -60,7 +64,7 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
 PROFILES: tuple[tuple[str, frozenset[str]], ...] = (
     ("apps", frozenset({"apps", "memory"})),
     ("files", frozenset({"apps", "files", "memory"})),
-    ("everyday", frozenset({"apps", "system", "music", "shortcuts", "memory"})),
+    ("everyday", frozenset({"apps", "system", "music", "shortcuts", "weather", "memory"})),
     ("web", frozenset({"apps", "browser", "files", "memory"})),
     ("dev", frozenset({"apps", "files", "projects", "terminal", "memory"})),
 )
@@ -73,6 +77,8 @@ def wanted_groups(request: str) -> set[str]:
         found.discard("browser_weak")
         if not found & {"projects", "terminal"}:
             found.add("browser")
+    if "weather" in found and found & {"projects", "terminal"}:
+        found.discard("weather")  # "find my weather app project"
     if {"shortcuts", "terminal"} <= found:  # "run my Water Eject shortcut"
         without_run = re.sub(r"\brun\b", "", request, flags=re.IGNORECASE)
         if not _KEYWORDS["terminal"].search(without_run):

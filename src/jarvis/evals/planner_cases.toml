@@ -382,12 +382,6 @@ request = "what's the latest news about apple?"
 action = ["execute"]
 tools = [["browser.search"], ["browser.open"]]
 
-[[case]]
-id = "browser-weather"
-category = "browser"
-request = "what's the weather in mumbai today?"
-action = ["execute"]
-tools = [["browser.search"], ["browser.open"]]
 
 [[case]]
 id = "browser-youtube"
@@ -611,6 +605,21 @@ request = "mute the sound"
 action = ["execute"]
 tools = [["system.volume"]]
 args = { "system.volume" = { mute = "true" } }
+
+[[case]]
+id = "siri-weather"
+category = "siri"
+request = "what's the weather in mumbai today?"
+action = ["execute"]
+tools = [["weather.forecast"]]
+args = { "weather.forecast" = { location = "mumbai" } }
+
+[[case]]
+id = "siri-rain"
+category = "siri"
+request = "will it rain tomorrow?"
+action = ["execute", "clarify"]
+tools = [["weather.forecast"]]
 
 [[case]]
 id = "siri-shutdown"

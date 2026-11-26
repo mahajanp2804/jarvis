@@ -31,7 +31,9 @@ from jarvis.evaluation import load_cases
         ("hi jarvis", "all"),
         ("find my weather app project", "dev"),  # "weather" is a project name here
         ("start the dev server in ~/Desktop/Code/web", "dev"),
-        ("what's the weather in mumbai today?", "web"),
+        ("what's the weather in mumbai today?", "everyday"),
+        ("will it rain tomorrow?", "everyday"),
+        ("search the web for the weather in pune", "all"),  # weather and web
         ("take a screenshot", "all"),  # screen tools are opt-in, in no profile
     ],
 )
