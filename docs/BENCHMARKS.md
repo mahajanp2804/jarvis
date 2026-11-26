@@ -101,6 +101,39 @@ would push the full prompt towards the 4,096-token context: switch it on and
 re-run `jarvis eval --profiles on`. The cache cap default is now 1 GB so the
 profiles never evict each other.
 
+**Phase 8 re-measurement (0.8.0, 43 tools, 101 requests, Nov 2026):** the
+everyday profile (apps, system, music, weather, timers, Shortcuts, memory)
+was added, and profiles were compared again before the wrong-setting guard:
+
+| | Profiles off | Profiles on |
+|---|---|---|
+| `jarvis eval` score | 88/101 (87%) | 89/101 (88%): apps +1, browser +1, vague +1, projects -1, siri -1 |
+| Planning time | first 10.2 s, median 2.0 s | first 6.2 s, median 2.9 s, slowest 15.3 s (each profile's first use reads its prompt) |
+
+**Decision: still off.** The score difference is one request, and switching
+between six saved prompts made the median slower on a mixed workload. The
+prompt-size problem profiles were meant to solve is handled by the larger
+context window instead (below).
+
+## Context window (`[ai] context_length`)
+
+With 43 tools and the installed-app list the system prompt is 2,353 tokens.
+At 4,096 tokens that left about 1,300 for the conversation and tool results,
+so one long result no longer fitted in full. `jarvis benchmark` on the same
+Mac (M4, 16 GB), 4,096 vs 8,192:
+
+| | 4,096 | 8,192 |
+|---|---|---|
+| Planning, prompt cached | 1.58-1.77 s | 1.54-1.74 s |
+| First request after a reload | 2.69 s | 2.63 s |
+| Generation | 27 tokens/s | 27-28 tokens/s |
+| Footprint, model loaded | 744 MB | 1,318 MB |
+| Footprint, model unloaded | 38 MB | 38 MB |
+
+**Decision: 8,192 by default** (0.8.0): same speed, about 0.6 GB more only
+while the model is loaded; it's freed after the idle timeout. Set 4,096 to
+save that memory.
+
 ## Language model
 
 `jarvis benchmark` (2 rounds over 4 prompts; system prompt 1,905 tokens with
