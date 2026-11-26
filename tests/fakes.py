@@ -16,6 +16,8 @@ from jarvis.platforms.base import (
     AppInfo,
     DiagnosticCheck,
     PlatformAdapter,
+    SystemControls,
+    SystemState,
     TextLine,
 )
 
@@ -83,6 +85,38 @@ class FakeAppControl(AppControlAdapter):
             self.running.discard(app.name)
 
 
+class FakeSystemControls(SystemControls):
+    """Volume, Wi-Fi and display in memory; records every change."""
+
+    def __init__(self) -> None:
+        self.current = SystemState(
+            volume=50, muted=False, wifi_on=True, battery_percent=80,
+            charging=False, on_battery_power=True, dark_mode=False,
+        )  # fmt: skip
+        self.changes: list[tuple[str, object]] = []
+
+    def state(self) -> SystemState:
+        return self.current
+
+    def _set(self, what: str, value: object, **fields: object) -> None:
+        from dataclasses import replace
+
+        self.changes.append((what, value))
+        self.current = replace(self.current, **fields)  # type: ignore[arg-type]
+
+    def set_volume(self, level: int) -> None:
+        self._set("volume", level, volume=level)
+
+    def set_muted(self, muted: bool) -> None:
+        self._set("muted", muted, muted=muted)
+
+    def set_wifi(self, on: bool) -> None:
+        self._set("wifi", on, wifi_on=on)
+
+    def sleep_display(self) -> None:
+        self.changes.append(("sleep_display", None))
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -93,6 +127,7 @@ class FakePlatform(PlatformAdapter):
         self.index: list[Path] | None = None  # None = no search index (folder scan)
         self.captures = []
         self.shortcut_runs = []
+        self.system = FakeSystemControls()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -110,6 +145,9 @@ class FakePlatform(PlatformAdapter):
     ) -> str:
         self.shortcut_runs.append((name, input_text))
         return self.shortcut_output
+
+    def system_controls(self) -> SystemControls:
+        return self.system
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""
