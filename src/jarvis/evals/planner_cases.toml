@@ -490,19 +490,40 @@ action = ["respond"]
 id = "siri-timer"
 category = "siri"
 request = "set a timer for 10 minutes"
-action = ["respond"]
+action = ["execute"]
+tools = [["timers.start"]]
+args = { "timers.start" = { duration = "10" } }
 
 [[case]]
 id = "siri-alarm"
 category = "siri"
 request = "wake me up at 7 am tomorrow"
-action = ["respond"]
+action = ["execute"]
+tools = [["timers.alarm"]]
+args = { "timers.alarm" = { time = "7" } }
 
 [[case]]
 id = "siri-reminder"
 category = "siri"
 request = "remind me to buy milk at 6 pm"
-action = ["respond"]
+action = ["execute"]
+tools = [["timers.alarm"]]
+args = { "timers.alarm" = { time = "6", label = "milk" } }
+
+[[case]]
+id = "siri-cancel-timer"
+category = "siri"
+request = "cancel my pasta timer"
+action = ["execute"]
+tools = [["timers.cancel"]]
+args = { "timers.cancel" = { which = "pasta" } }
+
+[[case]]
+id = "siri-timer-left"
+category = "siri"
+request = "how much time is left on my timer?"
+action = ["execute"]
+tools = [["timers.list"]]
 
 [[case]]
 id = "siri-calendar"
