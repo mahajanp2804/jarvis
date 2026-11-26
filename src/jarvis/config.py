@@ -157,7 +157,9 @@ class AIConfig(_Section):
     isolation: Literal["subprocess", "in_process"] = "subprocess"
     # GGUF file. Unset = the default model in the platform models directory.
     model_path: Path | None = None
-    context_length: int = Field(default=4096, ge=512, le=131072)
+    # Tokens the model can see at once: system prompt, conversation and tool results.
+    # 8192 costs ~0.6 GB more than 4096 while the model is loaded, at the same speed.
+    context_length: int = Field(default=8192, ge=512, le=131072)
     # Layers offloaded to the GPU (Metal on Apple Silicon); -1 = all, 0 = CPU only.
     gpu_layers: int = Field(default=-1, ge=-1)
     # CPU threads for inference; unset = llama.cpp default.
@@ -533,7 +535,8 @@ isolation = "subprocess"
 # Uncomment to use a different GGUF file. Default:
 # ~/Library/Application Support/Jarvis/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 # model_path = "~/models/my-model.gguf"
-context_length = 4096
+# Tokens the model sees at once (prompt, conversation, results). 4096 saves ~0.6 GB.
+context_length = 8192
 # Layers on the GPU (Metal): -1 = all, 0 = CPU only.
 gpu_layers = -1
 temperature = 0.0

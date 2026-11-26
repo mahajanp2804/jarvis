@@ -33,7 +33,7 @@ from jarvis.errors import JarvisError
 Opener = Callable[..., Any]
 
 START_HINT = (
-    "Start the server first, e.g. `llama-server -m MODEL.gguf --jinja -c 4096 --port 8080`, "
+    "Start the server first, e.g. `llama-server -m MODEL.gguf --jinja -c 8192 --port 8080`, "
     'or set [ai] backend = "llama_cpp" to use the built-in model.'
 )
 

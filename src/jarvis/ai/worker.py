@@ -49,7 +49,7 @@ def backend_from_settings(settings: dict[str, Any]) -> LlamaCppBackend:
     )
     return LlamaCppBackend(
         Path(settings["model_path"]),
-        context_length=int(settings.get("context_length", 4096)),
+        context_length=int(settings.get("context_length", 8192)),
         gpu_layers=int(settings.get("gpu_layers", -1)),
         threads=settings.get("threads"),
         chat_format=settings.get("chat_format"),

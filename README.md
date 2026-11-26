@@ -472,7 +472,7 @@ Key settings:
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
 | `[agent]` | `max_rounds` (6), `max_tool_retries` (2), `retry_backoff_seconds`, `max_observation_chars` (1500), `history_ttl_seconds` (600) |
-| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (4096), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false); `backend` (`llama_cpp`, or `server`), `server_url` (`http://127.0.0.1:8080/v1`), `allow_remote_server` (false) |
+| `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (8192), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false); `backend` (`llama_cpp`, or `server`), `server_url` (`http://127.0.0.1:8080/v1`), `allow_remote_server` (false) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
 | `[memory]` | `enabled` (true), `path`, `record_history` (true), `history_days` (30), `max_history` (1000), `share_preferences` (true) |
 | `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
@@ -648,7 +648,7 @@ with no platform adapter, evidence that the core is portable).
   automated browsers, so the default search is Bing. Pages that need a login
   are handed to you.
 * OCR can't always tell a lone `0` from `O` in the system font.
-* The context window (4096 tokens) bounds how much tool output the model sees
+* The context window (8192 tokens) bounds how much tool output the model sees
   per request. Older results are shortened automatically.
 * Push-to-talk wasn't tested with a live microphone. The recording code is
   exercised with scripted workers and transcription with synthesized speech,
@@ -700,7 +700,7 @@ llama.cpp's `llama-server`, Ollama or LM Studio, so several programs (for
 example Jarvis and Hermes Agent) can share one loaded model:
 
 ```bash
-llama-server -m ~/Library/Application\ Support/Jarvis/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --jinja -c 4096 --port 8080
+llama-server -m ~/Library/Application\ Support/Jarvis/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --jinja -c 8192 --port 8080
 ```
 
 ```toml

@@ -53,7 +53,7 @@ class LlamaCppBackend(LLMBackend):
         self,
         model_path: Path,
         *,
-        context_length: int = 4096,
+        context_length: int = 8192,
         gpu_layers: int = -1,
         threads: int | None = None,
         chat_format: str | None = None,

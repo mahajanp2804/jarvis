@@ -153,7 +153,7 @@ def test_ai_defaults_point_at_the_default_model() -> None:
     ai = JarvisConfig().ai
     assert ai.enabled is True
     assert ai.resolved_model_path() == default_models_dir() / DEFAULT_MODEL.filename
-    assert ai.context_length == 4096
+    assert ai.context_length == 8192
     assert ai.idle_unload_seconds == 300.0
     assert ai.metal_residency_sets is False
 
