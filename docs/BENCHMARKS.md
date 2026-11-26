@@ -55,27 +55,30 @@ exist only during a request.
 
 ## Planner accuracy
 
-`jarvis eval` plans 92 fixed test requests with the real model (first round
+`jarvis eval` plans fixed test requests with the real model (first round
 only; nothing is executed) and checks the action, tools and key arguments.
-Siri-style requests Jarvis has no tool for yet are expected to be declined.
-The test set lives in `src/jarvis/evals/planner_cases.toml`.
+Siri-style requests Jarvis has no tool for yet are expected to be declined;
+when a phase adds the tool, its cases expect the tool instead. The test set
+lives in `src/jarvis/evals/planner_cases.toml`. It plans with the model only:
+phrasings the rule-based router handles never reach it in real use.
 
-| Category | Baseline (0.6.1, 29 tools, Qwen3-4B, Nov 2026) |
-|---|---|
-| apps | 13/13 |
-| files | 15/15 |
-| memory | 5/5 |
-| chat (general questions) | 8/8 |
-| vague (must ask) | 7/7 |
-| safety (secrets, `sudo rm`, injected instructions) | 5/5 |
-| projects and terminal | 11/14: plans `projects.inspect` before plain commands such as `git status` |
-| browser | 8/10: asks instead of opening YouTube or looking up a price |
-| siri (no tool yet: should decline) | 8/15: asks "which app?" for messages, email and calls; starts actions for reminders and calendar |
-| **overall** | **80/92 (87%)** |
+| Category | Baseline (0.6.1, 29 tools, 92 requests) | 0.8.0 (43 tools, 101 requests) |
+|---|---|---|
+| apps | 13/13 | 12/13: lists apps for "open my web browser" |
+| files | 15/15 | 15/15 |
+| memory | 5/5 | 5/5 |
+| chat (general questions) | 8/8 | 8/8 |
+| vague (must ask) | 7/7 | 6/7: looks for "my project" instead of asking which |
+| safety (secrets, `sudo rm`, injected instructions) | 5/5 | 5/5 |
+| projects and terminal | 11/14: plans `projects.inspect` before plain commands such as `git status` | 11/14: the same |
+| browser | 8/10: asks instead of opening YouTube or looking up a price | 7/9: declines YouTube and the bitcoin price (the weather case moved to siri) |
+| siri | 8/15 (no tools: should decline) | 20/25: volume, Wi-Fi, battery, music, timers, alarms, reminders and weather use their tools; brightness and Do Not Disturb look for a shortcut. Fails: asks "which app?" for messages and calls, plans `system.status` for the calendar, "skip this song" picks `previous`, asks what "what song is this?" means |
+| **overall** | **80/92 (87%)** | **89/101 (88%)** |
 
-Planning time: 9.6 s for the first request (it reads the 1,900-token system
-prompt), then a median of 2.4 s. A real-model test fails if the score drops
-below 85%.
+Planning time (0.8.0): 13.4 s for the first request (it reads the
+2,400-token system prompt), then a median of 2.4 s. A real-model test fails
+if the score drops below 85%. "skip this song" and "what song is this?" are
+also router phrasings, so they run correctly without the model.
 
 ## Tool profiles (`[ai] tool_profiles`, off by default)
 
@@ -199,7 +202,7 @@ live-microphone measurements yet.
 
 | Where | Tests | Time |
 |---|---|---|
-| This Mac (`pytest`) | 637 passed, 16 skipped (opt-in model/GUI tests) | ~13 s |
-| CI, macOS 15 arm64, Python 3.11 / 3.14 | full suite + lint + types + packaging | ~1.7 / 2.0 min per job |
-| CI, Linux, Python 3.12 (shared core only) | 614+ passed; macOS-only tests skipped | ~1 min |
-| Real-model tests (`JARVIS_RUN_MODEL_TESTS=1 pytest -m model`) | 12 | ~70 s |
+| This Mac (`pytest`) | 867 passed, 18 skipped (opt-in model/GUI tests) | ~21 s |
+| CI, macOS 15 arm64, Python 3.11 / 3.14 | 864 passed + lint + types + packaging | ~1.5 / 2 min per job |
+| CI, Linux, Python 3.12 (shared core only) | 836 passed; macOS-only tests skipped | ~45 s |
+| Real-model tests (`JARVIS_RUN_MODEL_TESTS=1 pytest -m model`) | 14 (incl. the 101-request eval) | ~7 min |
