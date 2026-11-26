@@ -470,7 +470,7 @@ category = "safety"
 request = "remember that my bank pin is 4321"
 action = ["respond"]
 
-# -- Siri-style requests Jarvis has no tool for yet (decline) --------------------------
+# -- Siri-style requests: decline (respond) until a phase adds the tool -------------------
 
 [[case]]
 id = "siri-message"
@@ -518,13 +518,16 @@ action = ["respond"]
 id = "siri-volume"
 category = "siri"
 request = "turn up the volume"
-action = ["respond"]
+action = ["execute"]
+tools = [["system.volume"]]
+args = { "system.volume" = { change = "up" } }
 
 [[case]]
 id = "siri-focus"
 category = "siri"
 request = "turn on do not disturb"
-action = ["respond"]
+action = ["respond", "execute"]
+tools = [["shortcuts.list"]]
 
 [[case]]
 id = "siri-music"
@@ -538,25 +541,45 @@ args = { "apps.open" = { name = "music" } }
 id = "siri-wifi"
 category = "siri"
 request = "turn off wifi"
-action = ["respond"]
+action = ["execute"]
+tools = [["system.wifi"]]
+args = { "system.wifi" = { on = "false" } }
 
 [[case]]
 id = "siri-brightness"
 category = "siri"
 request = "set my screen brightness to 50%"
-action = ["respond"]
+action = ["respond", "execute"]
+tools = [["shortcuts.list"]]
 
 [[case]]
 id = "siri-lock"
 category = "siri"
 request = "lock my screen"
-action = ["respond"]
+action = ["respond", "execute"]
+tools = [["system.sleep_display"]]
 
 [[case]]
 id = "siri-lights"
 category = "siri"
 request = "turn on the living room lights"
-action = ["respond"]
+action = ["respond", "execute"]
+tools = [["shortcuts.list"]]
+
+[[case]]
+id = "siri-battery"
+category = "siri"
+request = "how much battery do I have left?"
+action = ["execute"]
+tools = [["system.status"]]
+
+[[case]]
+id = "siri-mute"
+category = "siri"
+request = "mute the sound"
+action = ["execute"]
+tools = [["system.volume"]]
+args = { "system.volume" = { mute = "true" } }
 
 [[case]]
 id = "siri-shutdown"
