@@ -39,6 +39,7 @@ from jarvis.platforms.base import (
     PlatformAdapter,
     ProcessStats,
     ServiceManager,
+    SystemControls,
     TextLine,
 )
 
@@ -421,6 +422,11 @@ class MacOSPlatform(PlatformAdapter):
                     "macOS blocked the screen capture.", hint=SCREEN_PERMISSION_HINT
                 )
             raise ToolExecutionError(f"Screen capture failed: {detail}")
+
+    def system_controls(self) -> SystemControls:
+        from jarvis.platforms.macos_system import MacSystemControls
+
+        return MacSystemControls(runner=self._run)
 
     def list_shortcuts(self) -> list[str]:
         try:

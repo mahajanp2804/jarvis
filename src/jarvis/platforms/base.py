@@ -103,6 +103,40 @@ class TextLine:
 
 
 @dataclass(frozen=True)
+class SystemState:
+    """What `system.status` reports; ``None`` where this Mac can't tell."""
+
+    volume: int | None = None  # output volume, 0-100
+    muted: bool | None = None
+    wifi_on: bool | None = None
+    battery_percent: int | None = None
+    charging: bool | None = None
+    on_battery_power: bool | None = None
+    dark_mode: bool | None = None
+
+
+class SystemControls(ABC):
+    """Everyday system settings: volume, Wi-Fi, display (Phase 8)."""
+
+    @abstractmethod
+    def state(self) -> SystemState: ...
+
+    @abstractmethod
+    def set_volume(self, level: int) -> None:
+        """Set the output volume, 0-100."""
+
+    @abstractmethod
+    def set_muted(self, muted: bool) -> None: ...
+
+    @abstractmethod
+    def set_wifi(self, on: bool) -> None: ...
+
+    @abstractmethod
+    def sleep_display(self) -> None:
+        """Turn the display off (macOS locks it if a password is required after sleep)."""
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -244,7 +278,10 @@ class PlatformAdapter(ABC):
         """On-device text recognition, lines ordered top to bottom."""
         raise UnsupportedPlatformError(f"Text recognition isn't implemented on {self.name}.")
 
-    # -- Shortcuts (Phase 8) ------------------------------------------------------------
+    # -- system controls and Shortcuts (Phase 8) ----------------------------------------
+
+    def system_controls(self) -> SystemControls:
+        raise UnsupportedPlatformError(f"System controls aren't implemented on {self.name}.")
 
     def list_shortcuts(self) -> list[str]:
         """Names of the user's shortcuts (Apple Shortcuts on macOS)."""
