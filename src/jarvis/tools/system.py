@@ -88,7 +88,8 @@ class SystemTools:
             ),
             ToolSpec(
                 "system.volume",
-                "Set the sound volume, turn it up or down, or mute it. Give one argument.",
+                "Change the speaker volume: set a level, turn it up or down, or mute. "
+                "Give one argument.",
                 VolumeArgs,
                 RiskLevel.LOW,
                 self._prepare_volume,

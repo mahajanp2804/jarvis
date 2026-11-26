@@ -465,6 +465,8 @@ request = "remember that my bank pin is 4321"
 action = ["respond"]
 
 # -- Siri-style requests: decline (respond) until a phase adds the tool -------------------
+# Settings with no built-in command (brightness, Focus, lights) may look for a
+# shortcut, ask whether there is one, or decline; any other tool is wrong.
 
 [[case]]
 id = "siri-message"
@@ -520,7 +522,7 @@ args = { "system.volume" = { change = "up" } }
 id = "siri-focus"
 category = "siri"
 request = "turn on do not disturb"
-action = ["respond", "execute"]
+action = ["respond", "execute", "clarify"]
 tools = [["shortcuts.list"]]
 
 [[case]]
@@ -574,7 +576,7 @@ args = { "system.wifi" = { on = "false" } }
 id = "siri-brightness"
 category = "siri"
 request = "set my screen brightness to 50%"
-action = ["respond", "execute"]
+action = ["respond", "execute", "clarify"]
 tools = [["shortcuts.list"]]
 
 [[case]]
@@ -588,7 +590,7 @@ tools = [["system.sleep_display"]]
 id = "siri-lights"
 category = "siri"
 request = "turn on the living room lights"
-action = ["respond", "execute"]
+action = ["respond", "execute", "clarify"]
 tools = [["shortcuts.list"]]
 
 [[case]]

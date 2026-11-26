@@ -54,7 +54,8 @@ class ShortcutTools:
         return [
             ToolSpec(
                 "shortcuts.list",
-                "List the user's Apple Shortcuts.",
+                "List the user's Apple Shortcuts, e.g. to find one for screen brightness, "
+                "Focus or smart-home lights.",
                 ListShortcutsArgs,
                 RiskLevel.READ_ONLY,
                 self._prepare_list,
@@ -62,8 +63,7 @@ class ShortcutTools:
             ),
             ToolSpec(
                 "shortcuts.run",
-                "Run one of the user's Apple Shortcuts by name (asks first unless trusted). "
-                "Use it for things no other tool does, e.g. brightness or Focus.",
+                "Run the user's Apple Shortcut with this exact name from shortcuts.list.",
                 RunShortcutArgs,
                 RiskLevel.MEDIUM,
                 self._prepare_run,

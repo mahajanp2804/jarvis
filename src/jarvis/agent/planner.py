@@ -234,6 +234,16 @@ _EXAMPLES: list[tuple[str, list[tuple[dict[str, Any], str]]]] = [
             (_plan("respond", "It lists two tasks: buy milk and call Sam."), ""),
         ],
     ),
+    (
+        "turn on night shift",
+        [
+            (_plan("execute", "Looking for a shortcut that does that.",
+                   _step("shortcuts.list", query="night shift"), finish=False),
+             "1. shortcuts.list -> success: No shortcuts matching 'night shift'."),
+            (_plan("respond", "You have no shortcut for Night Shift. Make one in the Shortcuts "
+                   "app and I can run it."), ""),
+        ],
+    ),
     ("close it", [(_plan("clarify", "Which application should I quit?"), "")]),
     ("send an email to Sam", [(_plan("respond", "I can't send email yet."), "")]),
 ]  # fmt: skip
@@ -244,6 +254,8 @@ _PREFER = (
     ("files", "files.* for files"),
     ("browser", "browser.* for the web"),
     ("terminal", "terminal.run only for development commands inside a project folder"),
+    ("system", "system.* only for sound, Wi-Fi, battery and the display"),
+    ("shortcuts", "shortcuts.* for other settings such as brightness or Focus"),
 )
 
 _SYSTEM_TEMPLATE = """\

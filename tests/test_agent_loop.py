@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from jarvis.agent.planner import Planner, PlannerSettings, PlanningError, Turn
+from jarvis.agent.planner import _CHARS_PER_TOKEN, Planner, PlannerSettings, PlanningError, Turn
 from jarvis.ai.model_manager import ModelManager
 from jarvis.api.schemas import ToolStatus
 from jarvis.bootstrap import Runtime
@@ -265,10 +265,15 @@ def test_cancel_event_stops_between_rounds(make_runtime: MakeRuntime, fake_llm: 
 def test_older_results_are_shortened_to_fit(make_runtime: MakeRuntime) -> None:
     runtime, _ = make_runtime()
     llm = FakeLLM(plan_json("respond", "ok"))
+    specs = list(runtime.registry)
+    manager = ModelManager(llm, idle_unload_seconds=0)
+    prompt = Planner(manager, lambda: specs, PlannerSettings()).system_prompt(specs)
+    # Room for the system prompt and one full result, but not two.
+    context = int((len(prompt) + 4500) / _CHARS_PER_TOKEN) + 256 + 64
     planner = Planner(
         ModelManager(llm, idle_unload_seconds=0),
-        lambda: list(runtime.registry),
-        PlannerSettings(context_tokens=4096, max_tokens=256),
+        lambda: specs,
+        PlannerSettings(context_tokens=context, max_tokens=256),
     )
     big = "x" * 3000
     turns = [Turn("{}", f"FULL-{i} {big}", f"SHORT-{i}") for i in range(4)]
