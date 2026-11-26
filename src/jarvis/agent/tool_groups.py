@@ -45,6 +45,10 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
         "browser_weak": r"\b(?:web|site|search|look up|news|weather|price|page|recipe)\b",
         "screen": r"\b(?:screen|screenshot)\b",
         "shortcuts": r"\bshortcuts?\b",
+        "system": (
+            r"\b(?:volume|louder|quieter|mute|unmute|sound|wi-?fi|battery|charging|dark mode"
+            r"|(?:screen|display) off|turn off the (?:screen|display))\b"
+        ),
     }.items()
 }
 
@@ -52,6 +56,7 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
 PROFILES: tuple[tuple[str, frozenset[str]], ...] = (
     ("apps", frozenset({"apps", "memory"})),
     ("files", frozenset({"apps", "files", "memory"})),
+    ("system", frozenset({"apps", "system", "shortcuts", "memory"})),
     ("web", frozenset({"apps", "browser", "files", "memory"})),
     ("dev", frozenset({"apps", "files", "projects", "terminal", "memory"})),
 )
@@ -64,6 +69,10 @@ def wanted_groups(request: str) -> set[str]:
         found.discard("browser_weak")
         if not found & {"projects", "terminal"}:
             found.add("browser")
+    if {"shortcuts", "terminal"} <= found:  # "run my Water Eject shortcut"
+        without_run = re.sub(r"\brun\b", "", request, flags=re.IGNORECASE)
+        if not _KEYWORDS["terminal"].search(without_run):
+            found.discard("terminal")
     return found
 
 
