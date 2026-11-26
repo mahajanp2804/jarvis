@@ -137,6 +137,39 @@ class SystemControls(ABC):
 
 
 @dataclass(frozen=True)
+class NowPlaying:
+    """The music player's state; track fields are empty when nothing is loaded."""
+
+    state: str  # "playing", "paused", "stopped" or "not running"
+    track: str = ""
+    artist: str = ""
+    album: str = ""
+
+
+class MusicPlayer(ABC):
+    """The music app (Music.app on macOS) (Phase 8)."""
+
+    @abstractmethod
+    def now_playing(self) -> NowPlaying:
+        """Never starts the music app."""
+
+    @abstractmethod
+    def command(self, command: str) -> None:
+        """One of play, pause, next or previous; only play starts the app."""
+
+    @abstractmethod
+    def playlists(self) -> list[str]: ...
+
+    @abstractmethod
+    def play_playlist(self, name: str) -> None:
+        """Play the playlist with exactly this name."""
+
+    @abstractmethod
+    def play_search(self, query: str) -> NowPlaying | None:
+        """Play the first library track matching ``query``; None if nothing matches."""
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -282,6 +315,9 @@ class PlatformAdapter(ABC):
 
     def system_controls(self) -> SystemControls:
         raise UnsupportedPlatformError(f"System controls aren't implemented on {self.name}.")
+
+    def music(self) -> MusicPlayer:
+        raise UnsupportedPlatformError(f"Music controls aren't implemented on {self.name}.")
 
     def list_shortcuts(self) -> list[str]:
         """Names of the user's shortcuts (Apple Shortcuts on macOS)."""

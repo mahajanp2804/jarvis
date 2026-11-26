@@ -36,6 +36,7 @@ from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
     DiagnosticCheck,
+    MusicPlayer,
     PlatformAdapter,
     ProcessStats,
     ServiceManager,
@@ -427,6 +428,11 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_system import MacSystemControls
 
         return MacSystemControls(runner=self._run)
+
+    def music(self) -> MusicPlayer:
+        from jarvis.platforms.macos_music import MacMusicPlayer
+
+        return MacMusicPlayer(runner=self._run)
 
     def list_shortcuts(self) -> list[str]:
         try:
