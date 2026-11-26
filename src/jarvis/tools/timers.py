@@ -62,6 +62,13 @@ _LATER_DAY = re.compile(
     r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b|\b\d{1,2}(?:st|nd|rd|th)\b"
     r"|\b(?:jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\bnext week\b"
 )
+
+
+def mentions_later_day(text: str) -> bool:
+    """ "on friday", "the 3rd", "in december": beyond today and tomorrow."""
+    return bool(_LATER_DAY.search(text.lower()))
+
+
 _CLOCK = re.compile(r"\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])", re.IGNORECASE)
 
 
@@ -70,7 +77,7 @@ def parse_alarm_time(text: str, now: datetime) -> datetime:
     words = text.strip().lower()
     if _DURATION_WORD.search(words):  # "in 20 minutes": that long from now
         return now.astimezone() + parse_duration(words.removeprefix("in ").strip())
-    if _LATER_DAY.search(words):
+    if mentions_later_day(words):
         raise ToolInputError(
             "Alarms and reminders can be set for today or tomorrow only.",
             hint="Use the Reminders or Calendar app for later dates.",

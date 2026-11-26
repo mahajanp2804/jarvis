@@ -37,13 +37,70 @@ def test_routes_simple_commands(text: str, tool: str, arguments: dict[str, str])
 
 
 @pytest.mark.parametrize(
+    ("text", "tool", "arguments"),
+    [
+        ("turn up the volume", "system.volume", {"change": "up"}),
+        ("Hey Jarvis, turn the volume down please.", "system.volume", {"change": "down"}),
+        ("set the volume to 30%", "system.volume", {"level": 30}),
+        ("mute", "system.volume", {"mute": True}),
+        ("unmute the sound", "system.volume", {"mute": False}),
+        ("turn off wifi", "system.wifi", {"on": False}),
+        ("turn the Wi-Fi on", "system.wifi", {"on": True}),
+        ("how much battery do I have left?", "system.status", {}),
+        ("turn off the screen", "system.sleep_display", {}),
+        ("pause the music", "music.control", {"command": "pause"}),
+        ("play", "music.control", {"command": "play"}),
+        ("skip this song", "music.control", {"command": "next"}),
+        ("previous track", "music.control", {"command": "previous"}),
+        ("what's playing?", "music.status", {}),
+        ("play my road trip playlist", "music.play", {"playlist": "road trip"}),
+        ("set a timer for 10 minutes", "timers.start", {"duration": "10 minutes"}),
+        ("set a 5 minute timer", "timers.start", {"duration": "5 minute"}),
+        ("set a timer for 10 minutes for pasta", "timers.start",
+         {"duration": "10 minutes", "label": "pasta"}),
+        ("wake me up at 7 am", "timers.alarm", {"time": "7 am"}),
+        ("set an alarm for 6:30 tomorrow", "timers.alarm", {"time": "6:30 tomorrow"}),
+        ("remind me to buy milk at 6 pm", "timers.alarm", {"time": "6 pm", "label": "buy milk"}),
+        ("remind me in 20 minutes to stretch", "timers.alarm",
+         {"time": "in 20 minutes", "label": "stretch"}),
+        ("how long is left on my timer?", "timers.list", {}),
+        ("cancel the pasta timer", "timers.cancel", {"which": "the pasta timer"}),
+        ("cancel all alarms", "timers.cancel", {"which": "all alarms"}),
+        ("what's the weather?", "weather.forecast", {}),
+        ("what's the weather like in New York today", "weather.forecast", {"location": "New York"}),
+    ],
+)  # fmt: skip
+def test_routes_everyday_commands(text: str, tool: str, arguments: dict[str, object]) -> None:
+    assert route(text) == ToolCall(tool=tool, arguments=arguments)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "play some jazz",  # a search: the planner picks the words
+        "stop",  # stop what?
+        "stop p1",
+        "set a timer",  # for how long?
+        "set a timer for later",
+        "wake me up when it's done",
+        "remind me later",
+        "remind me to call mom on friday at 5",  # only today or tomorrow
+        "set the volume to 150",
+        "turn the volume up to eleven",
+    ],
+)
+def test_everyday_commands_never_guess(text: str) -> None:
+    assert route(text) is None
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "",
         "   ",
         "hello",
         "open",
-        "what's the weather?",
+        "what's the weather going to do?",
         # "run"/"start" are reserved for projects and commands (later phases)
         "run Safari",
         "start the dev server",
