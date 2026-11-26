@@ -49,6 +49,10 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
             r"\b(?:volume|louder|quieter|mute|unmute|sound|wi-?fi|battery|charging|dark mode"
             r"|(?:screen|display) off|turn off the (?:screen|display))\b"
         ),
+        "music": (
+            r"\b(?:music|songs?|playlists?|albums?|play(?:ing)?|pause|resume|skip|track"
+            r"|jazz|rock|pop|classical|hip hop|lo-?fi)\b"
+        ),
     }.items()
 }
 
@@ -56,7 +60,7 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
 PROFILES: tuple[tuple[str, frozenset[str]], ...] = (
     ("apps", frozenset({"apps", "memory"})),
     ("files", frozenset({"apps", "files", "memory"})),
-    ("system", frozenset({"apps", "system", "shortcuts", "memory"})),
+    ("everyday", frozenset({"apps", "system", "music", "shortcuts", "memory"})),
     ("web", frozenset({"apps", "browser", "files", "memory"})),
     ("dev", frozenset({"apps", "files", "projects", "terminal", "memory"})),
 )

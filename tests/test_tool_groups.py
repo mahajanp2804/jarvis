@@ -18,10 +18,13 @@ from jarvis.evaluation import load_cases
         ("open github.com", "web"),
         ("open my Stock Price Predictor project and run it", "dev"),
         ("stop p1", "dev"),
-        ("turn the volume down", "system"),
-        ("how much battery do I have left?", "system"),
-        ("turn off wifi", "system"),
-        ("run my water eject shortcut", "system"),
+        ("turn the volume down", "everyday"),
+        ("how much battery do I have left?", "everyday"),
+        ("turn off wifi", "everyday"),
+        ("run my water eject shortcut", "everyday"),
+        ("play some jazz", "everyday"),
+        ("pause the music", "everyday"),
+        ("play the first video on youtube", "all"),  # music and web
         ("run the tests, then run my Notify shortcut", "all"),
         # No keywords, or a mix no profile covers: every tool, as before.
         ("set a timer for 10 minutes", "all"),
