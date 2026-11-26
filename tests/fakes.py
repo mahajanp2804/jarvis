@@ -15,6 +15,8 @@ from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
     DiagnosticCheck,
+    MusicPlayer,
+    NowPlaying,
     PlatformAdapter,
     SystemControls,
     SystemState,
@@ -117,6 +119,54 @@ class FakeSystemControls(SystemControls):
         self.changes.append(("sleep_display", None))
 
 
+class FakeMusicPlayer(MusicPlayer):
+    """A tiny library in memory; records every command."""
+
+    library: tuple[tuple[str, str, str], ...] = (
+        ("So What", "Miles Davis", "Kind of Blue"),
+        ("Take Five", "The Dave Brubeck Quartet", "Time Out"),
+    )
+
+    def __init__(self) -> None:
+        self.current = NowPlaying("not running")
+        self.playlist_names = ["Library", "Road Trip", "Focus"]
+        self.commands: list[str] = []
+
+    def now_playing(self) -> NowPlaying:
+        return self.current
+
+    def command(self, command: str) -> None:
+        from dataclasses import replace
+
+        self.commands.append(command)
+        if command == "play":
+            track, artist, album = self.library[0]
+            self.current = replace(self.current, state="playing", track=track,
+                                   artist=artist, album=album)  # fmt: skip
+        elif command == "pause":
+            self.current = replace(self.current, state="paused")
+        else:
+            track, artist, album = self.library[1]
+            self.current = NowPlaying("playing", track, artist, album)
+
+    def playlists(self) -> list[str]:
+        if self.current.state == "not running":
+            self.current = NowPlaying("stopped")  # listing playlists starts Music
+        return list(self.playlist_names)
+
+    def play_playlist(self, name: str) -> None:
+        self.commands.append(f"playlist:{name}")
+        self.current = NowPlaying("playing", *self.library[1])
+
+    def play_search(self, query: str) -> NowPlaying | None:
+        self.commands.append(f"search:{query}")
+        for track, artist, album in self.library:
+            if query.casefold() in f"{track} {artist} {album}".casefold():
+                self.current = NowPlaying("playing", track, artist, album)
+                return self.current
+        return None
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -128,6 +178,7 @@ class FakePlatform(PlatformAdapter):
         self.captures = []
         self.shortcut_runs = []
         self.system = FakeSystemControls()
+        self.player = FakeMusicPlayer()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -148,6 +199,9 @@ class FakePlatform(PlatformAdapter):
 
     def system_controls(self) -> SystemControls:
         return self.system
+
+    def music(self) -> MusicPlayer:
+        return self.player
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""

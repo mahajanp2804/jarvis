@@ -36,6 +36,7 @@ def test_defaults() -> None:
         "memory.*",
         "shortcuts.*",
         "system.*",
+        "music.*",
     ]
 
 

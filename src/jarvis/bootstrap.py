@@ -33,6 +33,7 @@ from jarvis.tools.base import ToolRegistry, ToolSpec
 from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_available
 from jarvis.tools.files import FileTools
 from jarvis.tools.memory import MemoryTools
+from jarvis.tools.music import MusicTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
 from jarvis.tools.screen import ScreenTools
@@ -192,6 +193,7 @@ def build_runtime(
         specs += MemoryTools(memory).specs()
     specs += ShortcutTools(platform, config.shortcuts).specs()
     specs += SystemTools(platform).specs()
+    specs += MusicTools(platform).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
