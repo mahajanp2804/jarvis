@@ -236,7 +236,7 @@ def test_tool_profiles_narrow_what_the_model_sees(make_runtime: MakeRuntime) -> 
 
     llm = FakeLLM(
         plan_json("execute", "Reading.", ("files.read", {"path": "~/Desktop/todo.txt"})),
-        plan_json("respond", "I can't set timers yet."),
+        plan_json("respond", "Why did the Mac cross the road?"),
     )
     planner = Planner(
         ModelManager(llm, idle_unload_seconds=0),
@@ -251,8 +251,8 @@ def test_tool_profiles_narrow_what_the_model_sees(make_runtime: MakeRuntime) -> 
     assert "terminal.run" not in system and "browser.open" not in system
     assert "terminal.run" not in schema  # the grammar can't pick a hidden tool either
 
-    timer = planner.plan("set a timer for 10 minutes")  # no keywords: every tool, as before
-    assert timer.profile == "all" and "terminal.run(" in llm.calls[1][0][0]["content"]
+    joke = planner.plan("tell me a joke")  # no keywords: every tool, as before
+    assert joke.profile == "all" and "terminal.run(" in llm.calls[1][0][0]["content"]
 
 
 def test_tool_profiles_are_off_by_default(make_runtime: MakeRuntime, fake_llm: FakeLLM) -> None:
