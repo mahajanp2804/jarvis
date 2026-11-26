@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections import deque
 from collections.abc import Sequence
 from pathlib import Path
@@ -91,6 +92,7 @@ class FakePlatform(PlatformAdapter):
         self.trash: list[Path] = []
         self.index: list[Path] | None = None  # None = no search index (folder scan)
         self.captures = []
+        self.shortcut_runs = []
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -99,6 +101,19 @@ class FakePlatform(PlatformAdapter):
 
     def open_path(self, path: Path, app: AppInfo | None = None) -> None:
         self.opened.append((path, app.name if app else None))
+
+    def list_shortcuts(self) -> list[str]:
+        return list(self.shortcut_names)
+
+    def run_shortcut(
+        self, name: str, input_text: str | None, *, timeout: float, cancel: threading.Event
+    ) -> str:
+        self.shortcut_runs.append((name, input_text))
+        return self.shortcut_output
+
+    shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
+    shortcut_output: str = ""
+    shortcut_runs: list[tuple[str, str | None]]
 
     screen_allowed: bool = True
     screen_text: tuple[str, ...] = ("Build passed", "3 warnings")

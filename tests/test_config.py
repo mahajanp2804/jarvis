@@ -34,6 +34,7 @@ def test_defaults() -> None:
         "terminal.*",
         "browser.*",
         "memory.*",
+        "shortcuts.*",
     ]
 
 

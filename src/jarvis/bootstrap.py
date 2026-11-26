@@ -36,6 +36,7 @@ from jarvis.tools.memory import MemoryTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
 from jarvis.tools.screen import ScreenTools
+from jarvis.tools.shortcuts import ShortcutTools
 from jarvis.tools.terminal import ProcessManager, TerminalTools
 
 log = logging.getLogger(__name__)
@@ -188,6 +189,7 @@ def build_runtime(
     memory = build_memory(config)
     if memory is not None:
         specs += MemoryTools(memory).specs()
+    specs += ShortcutTools(platform, config.shortcuts).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(

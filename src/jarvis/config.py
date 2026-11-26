@@ -45,7 +45,9 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 # add "screen.*" to use it.
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
-DEFAULT_TOOLS = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*"]
+DEFAULT_TOOLS = [
+    "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
+]  # fmt: skip
 
 
 class _Section(BaseModel):
@@ -343,6 +345,16 @@ class ServiceConfig(_Section):
         return _check_hotkey(value)
 
 
+class ShortcutsConfig(_Section):
+    """Apple Shortcuts that the shortcuts.* tools may run."""
+
+    # Shortcuts that run without asking (e.g. ["Water Eject"]); every other run asks,
+    # since Jarvis can't see what a shortcut does. After outside content, all ask.
+    trusted: list[str] = Field(default_factory=list)
+    # A shortcut still running after this long is stopped.
+    timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+
+
 class MemoryConfig(_Section):
     """Persistent memory (SQLite): remembered preferences and task history.
 
@@ -442,6 +454,7 @@ class JarvisConfig(_Section):
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    shortcuts: ShortcutsConfig = Field(default_factory=ShortcutsConfig)
 
     @model_validator(mode="after")
     def _distinct_hotkeys(self) -> JarvisConfig:
@@ -477,7 +490,9 @@ discovery_cache_seconds = 60.0
 [policy]
 # Tools Jarvis may use ("*" wildcards allowed). Anything not listed is denied.
 # Screen capture/OCR is opt-in: add "screen.*".
-enabled_tools = ["apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*"]
+enabled_tools = [
+    "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
+]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.
 confirm_at_or_above = "medium"
@@ -613,6 +628,12 @@ max_record_seconds = 15.0
 silence_seconds = 1.5
 # Metal: 0.08 s instead of 0.2 s per command, but ~7 s after a shader-cache reset.
 stt_use_gpu = false
+
+[shortcuts]
+# Every shortcut run asks first (Jarvis can't see what a shortcut does), except the
+# ones listed here, e.g. ["Water Eject"]. After outside content is read, all ask.
+trusted = []
+timeout_seconds = 60.0
 """
 
 

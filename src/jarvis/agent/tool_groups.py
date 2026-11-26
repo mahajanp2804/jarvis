@@ -44,6 +44,7 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
         # about a project or the terminal.
         "browser_weak": r"\b(?:web|site|search|look up|news|weather|price|page|recipe)\b",
         "screen": r"\b(?:screen|screenshot)\b",
+        "shortcuts": r"\bshortcuts?\b",
     }.items()
 }
 
