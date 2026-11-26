@@ -53,6 +53,7 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
             r"\b(?:weather|forecast|temperature|rain(?:ing|y)?|snow(?:ing|y)?|umbrella|sunny"
             r"|humid(?:ity)?)\b"
         ),
+        "timers": r"\b(?:timers?|alarms?|remind(?:er|ers)?|wake me)\b",
         "music": (
             r"\b(?:music|songs?|playlists?|albums?|play(?:ing)?|pause|resume|skip|track"
             r"|jazz|rock|pop|classical|hip hop|lo-?fi)\b"
@@ -64,7 +65,10 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
 PROFILES: tuple[tuple[str, frozenset[str]], ...] = (
     ("apps", frozenset({"apps", "memory"})),
     ("files", frozenset({"apps", "files", "memory"})),
-    ("everyday", frozenset({"apps", "system", "music", "shortcuts", "weather", "memory"})),
+    (
+        "everyday",
+        frozenset({"apps", "system", "music", "shortcuts", "weather", "timers", "memory"}),
+    ),
     ("web", frozenset({"apps", "browser", "files", "memory"})),
     ("dev", frozenset({"apps", "files", "projects", "terminal", "memory"})),
 )

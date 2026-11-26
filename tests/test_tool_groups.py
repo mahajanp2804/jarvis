@@ -23,11 +23,13 @@ from jarvis.evaluation import load_cases
         ("turn off wifi", "everyday"),
         ("run my water eject shortcut", "everyday"),
         ("play some jazz", "everyday"),
+        ("set a timer for 10 minutes", "everyday"),
+        ("remind me to buy milk at 6 pm", "everyday"),
+        ("wake me up at 7 am tomorrow", "everyday"),
         ("pause the music", "everyday"),
         ("play the first video on youtube", "all"),  # music and web
         ("run the tests, then run my Notify shortcut", "all"),
         # No keywords, or a mix no profile covers: every tool, as before.
-        ("set a timer for 10 minutes", "all"),
         ("hi jarvis", "all"),
         ("find my weather app project", "dev"),  # "weather" is a project name here
         ("start the dev server in ~/Desktop/Code/web", "dev"),
