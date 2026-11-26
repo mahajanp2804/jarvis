@@ -299,7 +299,7 @@ def test_read_a_file_and_answer(agent: tuple[Runtime, ScriptedConfirmer]) -> Non
     assert "passport" in reply.text.lower()
 
 
-# Today's score is 80/92 (87%), Nov 2026. Raise the floor as phases improve it;
+# Today's score is 89/101 (88%), Nov 2026 (0.8.0). Raise the floor as phases improve it;
 # a drop below it means a change made the planner worse.
 EVAL_FLOOR = 0.85
 

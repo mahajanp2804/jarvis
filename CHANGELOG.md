@@ -4,6 +4,50 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
+## 0.8.0: Everyday commands (Phase 8, 2026-11-26)
+
+- **Apple Shortcuts** (`shortcuts.list`, `shortcuts.run`): run any of your
+  shortcuts by name, which covers what macOS has no command for (brightness,
+  Focus, Bluetooth, HomeKit scenes). Running asks first unless the shortcut is
+  in `[shortcuts] trusted`; a near-miss name gets "Did you mean …?"; output is
+  outside content; slow shortcuts are stopped after `timeout_seconds`.
+- **System controls** (`system.status`, `volume`, `wifi`, `sleep_display`):
+  volume (set, up/down, mute), Wi-Fi, display off, and a status line with the
+  battery and dark mode. Built-in commands only, no new permission. Volume
+  runs without asking, like Siri; turning Wi-Fi off asks first.
+- **Music** (`music.status`, `control`, `play`): play, pause, skip, what's
+  playing, a playlist by name, or the first library song matching a search,
+  through fixed AppleScripts (names go in argv, never into a script). Needs
+  the Automation permission once.
+- **Weather** (`weather.forecast`): current conditions and three days from
+  Open-Meteo, no account or key; only the place name is sent. Home place and
+  units in `[weather]`.
+- **Timers, alarms and reminders** (`timers.start`, `alarm`, `list`,
+  `cancel`): parsed by Jarvis ("1h30m", "at 7", "in 20 minutes", "7:30 pm
+  tomorrow"), kept in their own `timers.sqlite3`, and rung by the service
+  (dialog, `[timers] sound`, spoken line) even if they were set from a
+  terminal. A timer that came due while the service was stopped rings when it
+  starts. `jarvis doctor` shows what's pending.
+- **Instant everyday commands**: about 40 phrasings ("turn up the volume",
+  "skip this song", "set a timer for 10 minutes for pasta", "remind me to buy
+  milk at 6 pm", "weather in Pune") skip the model and run in milliseconds.
+- A clarify that only declines ("I can't set alarms. Anything else?") is now a
+  reply, so the menu bar and voice don't wait for an answer.
+- The prompt keeps `system.*` to sound, Wi-Fi, battery and the display, and
+  sends other settings to Shortcuts: brightness had planned `system.volume`.
+  A plan that still uses `system.volume` or `system.wifi` for brightness, Do
+  Not Disturb, Night Shift or Bluetooth gets a corrective retry, so the wrong
+  setting is never changed.
+- The default context window is 8192 tokens (was 4096): with 43 tools enabled
+  the system prompt is ~2,400 tokens, which left too little room for results.
+  Same speed; ~0.6 GB more while the model is loaded.
+- The everyday tool profile covers system, music, weather, timers and
+  Shortcuts requests.
+- `jarvis eval`: 89/101 (88%) with 43 tools, from 80/92 (87%) with 29.
+  Siri-style requests: 20/25 use the right tool or decline correctly (8/15
+  before). Tool profiles were re-measured and stay off (see
+  `docs/BENCHMARKS.md`).
+
 ## 0.7.0: Foundations for Siri-style features (Phase 7, 2026-11-25)
 
 - `jarvis service status` and `jarvis doctor` say why the background service
