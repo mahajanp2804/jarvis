@@ -55,6 +55,8 @@ log = logging.getLogger(__name__)
 OPEN_BIN = "/usr/bin/open"
 SCREENCAPTURE_BIN = "/usr/sbin/screencapture"
 SHORTCUTS_BIN = "/usr/bin/shortcuts"
+AFPLAY = "/usr/bin/afplay"
+SYSTEM_SOUNDS = Path("/System/Library/Sounds")
 SCREEN_PERMISSION_HINT = (
     "Allow Screen Recording for the app running Jarvis (Terminal for `jarvis run`, Python "
     "for the background service) in System Settings > Privacy & Security > "
@@ -433,6 +435,22 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_music import MacMusicPlayer
 
         return MacMusicPlayer(runner=self._run)
+
+    def play_alert(self, sound: str, repeats: int = 3) -> None:
+        path = SYSTEM_SOUNDS / f"{sound}.aiff"
+        if not path.is_file():
+            log.warning("No system sound %r; using Glass", sound)
+            path = SYSTEM_SOUNDS / "Glass.aiff"
+
+        def play() -> None:
+            for _ in range(repeats):
+                try:
+                    self._run([AFPLAY, str(path)], capture_output=True, timeout=10)
+                except (OSError, subprocess.SubprocessError):
+                    log.warning("Couldn't play %s", path, exc_info=True)
+                    return
+
+        threading.Thread(target=play, name="alert-sound", daemon=True).start()
 
     def list_shortcuts(self) -> list[str]:
         try:

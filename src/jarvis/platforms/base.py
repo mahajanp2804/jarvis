@@ -319,6 +319,9 @@ class PlatformAdapter(ABC):
     def music(self) -> MusicPlayer:
         raise UnsupportedPlatformError(f"Music controls aren't implemented on {self.name}.")
 
+    def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
+        """Play an alert sound in the background, for timers and alarms. Never raises."""
+
     def list_shortcuts(self) -> list[str]:
         """Names of the user's shortcuts (Apple Shortcuts on macOS)."""
         raise UnsupportedPlatformError(f"Shortcuts aren't available on {self.name}.")
