@@ -533,9 +533,40 @@ tools = [["shortcuts.list"]]
 id = "siri-music"
 category = "siri"
 request = "play some jazz"
-action = ["respond", "execute"]
-tools = [["apps.open"]]
-args = { "apps.open" = { name = "music" } }
+action = ["execute"]
+tools = [["music.play"]]
+args = { "music.play" = { search = "jazz" } }
+
+[[case]]
+id = "siri-pause"
+category = "siri"
+request = "pause the music"
+action = ["execute"]
+tools = [["music.control"]]
+args = { "music.control" = { command = "pause" } }
+
+[[case]]
+id = "siri-skip"
+category = "siri"
+request = "skip this song"
+action = ["execute"]
+tools = [["music.control"]]
+args = { "music.control" = { command = "next" } }
+
+[[case]]
+id = "siri-now-playing"
+category = "siri"
+request = "what song is this?"
+action = ["execute"]
+tools = [["music.status"]]
+
+[[case]]
+id = "siri-playlist"
+category = "siri"
+request = "play my road trip playlist"
+action = ["execute"]
+tools = [["music.play"]]
+args = { "music.play" = { playlist = "road trip" } }
 
 [[case]]
 id = "siri-wifi"
