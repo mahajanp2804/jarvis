@@ -35,6 +35,7 @@ from jarvis.paths import (
     default_memory_path,
     default_models_dir,
     default_prompt_cache_dir,
+    default_timers_path,
 )
 
 CONFIG_ENV_VAR = "JARVIS_CONFIG"
@@ -47,7 +48,7 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 DEFAULT_TOOLS = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
-    "system.*", "music.*", "weather.*",
+    "system.*", "music.*", "weather.*", "timers.*",
 ]  # fmt: skip
 
 
@@ -370,6 +371,18 @@ class WeatherConfig(_Section):
     timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
 
+class TimersConfig(_Section):
+    """Timers and alarms, rung by the background service."""
+
+    # Unset = ~/Library/Application Support/Jarvis/timers.sqlite3 on macOS.
+    path: Path | None = None
+    # A sound from /System/Library/Sounds, e.g. "Glass", "Ping" or "Submarine".
+    sound: str = Field(default="Glass", pattern=r"^[A-Za-z0-9 ]{1,40}$")
+
+    def resolved_path(self) -> Path:
+        return self.path or default_timers_path()
+
+
 class MemoryConfig(_Section):
     """Persistent memory (SQLite): remembered preferences and task history.
 
@@ -471,6 +484,7 @@ class JarvisConfig(_Section):
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     shortcuts: ShortcutsConfig = Field(default_factory=ShortcutsConfig)
     weather: WeatherConfig = Field(default_factory=WeatherConfig)
+    timers: TimersConfig = Field(default_factory=TimersConfig)
 
     @model_validator(mode="after")
     def _distinct_hotkeys(self) -> JarvisConfig:
@@ -508,7 +522,7 @@ discovery_cache_seconds = 60.0
 # Screen capture/OCR is opt-in: add "screen.*".
 enabled_tools = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
-    "system.*", "music.*", "weather.*",
+    "system.*", "music.*", "weather.*", "timers.*",
 ]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.
@@ -659,6 +673,13 @@ timeout_seconds = 60.0
 location = ""
 units = "celsius"   # or "fahrenheit"
 timeout_seconds = 10.0
+
+[timers]
+# Timers and alarms ring while the Jarvis service runs: a dialog, this sound and,
+# with [voice] speak_replies, a spoken line. Uncomment to move the database from
+# ~/Library/Application Support/Jarvis/timers.sqlite3.
+# path = "~/Library/Application Support/Jarvis/timers.sqlite3"
+sound = "Glass"   # any sound in /System/Library/Sounds
 """
 
 

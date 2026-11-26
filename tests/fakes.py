@@ -179,6 +179,7 @@ class FakePlatform(PlatformAdapter):
         self.shortcut_runs = []
         self.system = FakeSystemControls()
         self.player = FakeMusicPlayer()
+        self.alerts: list[str] = []
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -202,6 +203,9 @@ class FakePlatform(PlatformAdapter):
 
     def music(self) -> MusicPlayer:
         return self.player
+
+    def play_alert(self, sound: str, repeats: int = 3) -> None:
+        self.alerts.append(sound)
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""

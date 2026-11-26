@@ -24,6 +24,7 @@ import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import IO, Any
 
@@ -38,6 +39,8 @@ from jarvis.runtime.assistant import Assistant, DialogConfirmer
 from jarvis.runtime.control import ControlServer
 from jarvis.runtime.event_loop import EventLoop, SignalBridge
 from jarvis.runtime.hotkeys import Hotkey, HotkeyError, HotkeyListener
+from jarvis.timers.ringer import TimerRinger, ring_message
+from jarvis.timers.store import Timer
 from jarvis.ui.base import HeadlessUI, UserInterface
 from jarvis.voice.listen import VoiceInput
 from jarvis.voice.speech import SpeechOutput
@@ -132,6 +135,9 @@ class Daemon:
         self.hotkey: Hotkey | None = None
         self.hotkey_error: str | None = None
         self.voice_hotkey: Hotkey | None = None
+        self.ringer: TimerRinger | None = None
+        self._ui: UserInterface | None = None
+        self._speech: SpeechOutput | None = None
         self._cancel = threading.Event()
         self._ready = threading.Event()
 
@@ -155,12 +161,13 @@ class Daemon:
                 self.config, self.platform, DialogConfirmer(loop, ui), cancel_event=self._cancel
             )
             self.runtime = runtime
+            self._ui, self._speech = ui, self._speaker()
             assistant = Assistant(
                 runtime.orchestrator,
                 ui,
                 loop,
                 show_success=self.config.service.show_success,
-                speaker=self._speaker(),
+                speaker=self._speech,
                 spoken_chars=self.config.voice.max_spoken_chars,
                 voice=self._voice_input(),
                 voice_shortcut=Hotkey.parse(self.config.voice.push_to_talk_hotkey).symbol(),
@@ -170,6 +177,7 @@ class Daemon:
             bridge = SignalBridge(loop, self._on_signal)
             bridge.install([signal.SIGTERM, signal.SIGINT])
             control.start()
+            self._start_ringer(runtime)
             if not self.headless:
                 listener = self._register_hotkey(loop, assistant)
                 if self.config.voice.push_to_talk:
@@ -215,7 +223,10 @@ class Daemon:
                 "requests": assistant.requests_handled,
                 "speak_replies": self.config.voice.speak_replies,
                 "push_to_talk": self.voice_hotkey.symbol() if self.voice_hotkey else None,
+                "timers_pending": self._pending_timers(runtime),
             }
+        if command == "timers-changed":  # a `jarvis` command elsewhere set or cancelled one
+            return {"ok": self.ringer.changed() if self.ringer else False}
         if command == "activate":
             if self.headless:
                 return {"ok": False, "error": "The service is running headless (no dialogs)."}
@@ -237,6 +248,37 @@ class Daemon:
         return {"ok": False, "error": f"unknown command {command!r}"}
 
     # -- internals ---------------------------------------------------------------------
+
+    def _start_ringer(self, runtime: Runtime) -> None:
+        if runtime.timers is None:
+            return
+        self.ringer = TimerRinger(runtime.timers, self._ring)
+        if runtime.timer_notifier is not None:
+            runtime.timer_notifier.attach(self.ringer.changed)
+        self.ringer.start()  # rings anything that came due while Jarvis was stopped
+
+    @staticmethod
+    def _pending_timers(runtime: Runtime) -> int | None:
+        if runtime.timers is None:
+            return None
+        try:
+            return len(runtime.timers.pending())
+        except JarvisError:
+            return None
+
+    def _ring(self, timer: Timer, late_by: timedelta) -> None:
+        """Runs on the ringer thread: sound and speech now, the dialog on the main thread."""
+        message = ring_message(timer, late_by)
+        log.info("Ringing %s %d", timer.kind, timer.id)
+        self.platform.play_alert(self.config.timers.sound)
+        if self._speech is not None:
+            try:
+                self._speech.speak(message)
+            except JarvisError as exc:
+                log.warning("Couldn't speak the %s: %s", timer.kind, exc.message)
+        ui, loop = self._ui, self.loop
+        if ui is not None and loop is not None and not loop.stopping:
+            loop.call_soon(lambda: ui.show("Jarvis", message))
 
     def _speaker(self) -> SpeechOutput | None:
         voice = self.config.voice
@@ -306,6 +348,10 @@ class Daemon:
             except HotkeyError:
                 log.warning("Could not unregister a shortcut", exc_info=True)
         self._cancel.set()
+        if self.ringer is not None:
+            self.ringer.stop()
+            if self.runtime is not None and self.runtime.timer_notifier is not None:
+                self.runtime.timer_notifier.attach(None)
         runtime = self.runtime
         if runtime is not None and runtime.models is not None:
             runtime.models.abort()

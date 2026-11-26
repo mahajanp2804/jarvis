@@ -28,6 +28,8 @@ from jarvis.paths import config_dir
 from jarvis.platforms.base import PlatformAdapter
 from jarvis.runtime.audit import AuditLog
 from jarvis.runtime.permissions import Confirmer, Decision, PolicyEngine
+from jarvis.timers.notify import TimerNotifier
+from jarvis.timers.store import TimerStore
 from jarvis.tools.applications import AppCatalog, ApplicationTools
 from jarvis.tools.base import ToolRegistry, ToolSpec
 from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_available
@@ -40,6 +42,7 @@ from jarvis.tools.screen import ScreenTools
 from jarvis.tools.shortcuts import ShortcutTools
 from jarvis.tools.system import SystemTools
 from jarvis.tools.terminal import ProcessManager, TerminalTools
+from jarvis.tools.timers import TimerTools
 from jarvis.tools.weather import WeatherTools
 
 log = logging.getLogger(__name__)
@@ -61,6 +64,9 @@ class Runtime:
     processes: ProcessManager
     browser: BrowserSession | None = None
     memory: MemoryStore | None = None
+    timers: TimerStore | None = None
+    # The service attaches its ringer here; elsewhere it messages the service.
+    timer_notifier: TimerNotifier | None = None
 
     def close(self) -> None:
         """Stop background processes and the browser, unload the model, close files."""
@@ -71,6 +77,8 @@ class Runtime:
             self.models.shutdown()
         if self.memory is not None:
             self.memory.close()
+        if self.timers is not None:
+            self.timers.close()
         self.audit.close()
 
 
@@ -196,6 +204,9 @@ def build_runtime(
     specs += SystemTools(platform).specs()
     specs += MusicTools(platform).specs()
     specs += WeatherTools(config.weather).specs()
+    timers = TimerStore(config.timers.resolved_path())  # the file opens on first use
+    timer_notifier = TimerNotifier()
+    specs += TimerTools(timers, changed=timer_notifier.changed).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
@@ -263,4 +274,6 @@ def build_runtime(
         processes=processes,
         browser=browser,
         memory=memory,
+        timers=timers,
+        timer_notifier=timer_notifier,
     )

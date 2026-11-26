@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from jarvis.ai.llama_cpp_backend import ModelLoadError
 from jarvis.config import JarvisConfig
 from jarvis.runtime.control import send_request
 from jarvis.runtime.lifecycle import AlreadyRunningError, Daemon, DaemonPaths, InstanceLock
+from jarvis.timers.store import TimerStore
 from tests.fakes import FakeLLM, FakePlatform, plan_json
 
 
@@ -139,6 +141,30 @@ def test_headless_daemon_serves_and_stops_on_sigterm(short_dir: Path, tmp_path: 
     lock = InstanceLock(daemon.paths.lock)
     lock.acquire()
     lock.release()
+
+
+def test_the_service_rings_timers(short_dir: Path, tmp_path: Path, private_timers: Path) -> None:
+    """A timer that came due while Jarvis was stopped rings at start; status counts the rest."""
+    store = TimerStore(private_timers)
+    store.add("timer", datetime.now(UTC) - timedelta(minutes=5), "tea", duration_seconds=60)
+    store.add("alarm", datetime.now(UTC) + timedelta(hours=3), "standup")
+    replies: dict[str, Any] = {}
+
+    def script(paths: DaemonPaths) -> None:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            replies["status"] = send_request(paths.socket, {"cmd": "status"})
+            if replies["status"]["timers_pending"] == 1:
+                break
+            time.sleep(0.05)
+        replies["changed"] = send_request(paths.socket, {"cmd": "timers-changed"})
+
+    daemon, _ = run_daemon_in_main_thread(short_dir, tmp_path, FakeLLM(), script)
+    assert replies["status"]["timers_pending"] == 1  # the tea timer rang
+    assert replies["changed"] == {"ok": True}
+    assert daemon.platform.alerts == ["Glass"]  # type: ignore[attr-defined]
+    assert [t.label for t in store.pending()] == ["standup"]
+    assert daemon.ringer is None or not daemon.ringer.running
 
 
 def test_shutdown_aborts_an_in_flight_model_request(short_dir: Path, tmp_path: Path) -> None:

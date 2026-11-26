@@ -21,6 +21,16 @@ def private_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def private_timers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Tests never read or write the real timers database."""
+    path = tmp_path / "timers" / "timers.sqlite3"
+    monkeypatch.setattr("jarvis.config.default_timers_path", lambda: path)
+    # ...and never message a real running service about them.
+    monkeypatch.setattr("jarvis.timers.notify._service_socket", lambda: tmp_path / "no.sock")
+    return path
+
+
 @pytest.fixture
 def fake_platform() -> FakePlatform:
     return FakePlatform()
