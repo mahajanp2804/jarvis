@@ -22,6 +22,10 @@ permission-gated actions on your computer:
   (opt-in) **the screen**. The model can only *propose* tool calls. Every action
   goes through the same validation, sandbox, permission policy, confirmation
   dialog and audit log.
+* **Everyday commands** like Siri's: volume, Wi-Fi, battery, music, timers,
+  alarms and reminders, the weather, and any of your **Apple Shortcuts**
+  (brightness, Focus, HomeKit scenes…). Common phrasings ("set a timer for 10
+  minutes", "skip this song") run instantly, without the model.
 * It **remembers** what you ask it to ("my editor is VS Code"), keeps a task
   history you can inspect, export and erase, and can **replay a task as a
   workflow** ("save that as morning setup"). Approvals are never remembered.
@@ -46,7 +50,7 @@ permission-gated actions on your computer:
 **Contents:** [Quick start](#quick-start-macos-apple-silicon) ·
 [Install options and uninstall](#install-options-and-uninstall) · [Tools](#tools) ·
 [Memory and workflows](#memory-and-workflows) · [Voice](#voice) ·
-[Architecture](#architecture) · [Security model](#security-model) ·
+[Everyday commands](#everyday-commands) · [Architecture](#architecture) · [Security model](#security-model) ·
 [Configuration](#configuration) · [Performance](#performance-and-trade-offs) ·
 [Testing](#testing) · [Known limitations](#known-limitations) ·
 [Troubleshooting](#troubleshooting) · [Roadmap](#roadmap)
@@ -170,6 +174,11 @@ That keeps your data. To remove everything, also delete:
 | `browser.*` | `open`, `search`, `read`, `click`, `type`, `close` | low → high | Your installed Chrome with a separate profile; DOM element refs, never coordinates |
 | `screen.*` | `read_text`, `capture` | medium (asks every time) | **Off by default.** On-device OCR (Apple Vision); captures deleted after reading |
 | `memory.*` | `remember`, `forget`, `list`, `history` | low / read-only | Preferences you state; refuses secrets; asks first after outside content was read. No tool can clear memory |
+| `system.*` | `status`, `volume`, `wifi`, `sleep_display` | read-only / low; Wi-Fi off is medium | Built-in commands only (`osascript` Standard Additions, `networksetup`, `pmset`); each change reads the state back |
+| `music.*` | `status`, `control`, `play` | read-only / low | Music.app through AppleScript; your library and playlists (not the Apple Music catalogue). Needs the Automation permission |
+| `weather.*` | `forecast` | low | [Open-Meteo](https://open-meteo.com): no account or key; only the place name is sent. Home place in `[weather] location` |
+| `timers.*` | `start`, `alarm`, `list`, `cancel` | low / read-only | Timers, alarms and reminders (today or tomorrow); they ring while the service runs |
+| `shortcuts.*` | `list`, `run` | read-only / medium | Your Apple Shortcuts. Running asks first (Jarvis can't see what a shortcut does) unless listed in `[shortcuts] trusted`; output is outside content |
 
 ### How the terminal decides
 
@@ -183,6 +192,43 @@ Commands are split into arguments and run directly, so pipes, redirection,
 | medium | `python3 app.py`, `npm run dev`, `git commit`, dev servers | yes |
 | high | `pip install`, `npm install`, `git push`, `git reset --hard` | always |
 | refused | `sudo`, `rm`, shells, `python -c`, `curl`, `ssh`, `osascript`, `launchctl`, `git config` | never runs |
+
+### Everyday commands
+
+These phrasings skip the model and run in milliseconds; anything else
+("play some jazz", "dim the screen") is planned by the model with the same
+tools:
+
+| Say | Does |
+|---|---|
+| "turn up the volume", "set the volume to 30%", "mute" | `system.volume` (no confirmation, like Siri) |
+| "turn off wifi" | `system.wifi` (asks first: the Mac goes offline) |
+| "how much battery do I have left?" | `system.status`: volume, Wi-Fi, battery, dark mode |
+| "turn off the screen" | `system.sleep_display` (locks if your Mac asks for a password after sleep) |
+| "pause", "skip this song", "what's playing?", "play my road trip playlist" | `music.*` |
+| "set a timer for 10 minutes for pasta", "wake me up at 7 am", "remind me to buy milk at 6 pm", "remind me in 20 minutes to stretch" | `timers.*` |
+| "cancel the pasta timer", "how long is left on my timer?" | `timers.cancel`, `timers.list` |
+| "what's the weather?", "weather in Pune" | `weather.forecast` |
+
+What's needed:
+
+* **Timers and alarms ring while the Jarvis service runs** (`jarvis service
+  start`): a dialog, the `[timers] sound` and, with spoken replies on, a
+  spoken line. A timer set while the service is stopped says so, and one that
+  came due meanwhile rings when the service starts. They live in their own
+  database (`timers.sqlite3`), not in memory: clearing memory doesn't cancel
+  an alarm. Times are today or tomorrow; use Calendar or Reminders for later.
+* **Music** asks macOS for the Automation permission the first time ("Jarvis
+  wants to control Music"). If you declined, turn it on in System Settings >
+  Privacy & Security > Automation, under Terminal (or Python for the
+  service). Only songs in your library can be played.
+* **Brightness, Focus, Bluetooth and smart-home scenes** have no
+  permission-free command, so Jarvis looks for a matching shortcut: make one
+  in the Shortcuts app ("Set Brightness", "Living Room Lights") and say
+  "run my Living Room Lights shortcut", or list it in `[shortcuts] trusted` so
+  it runs without asking.
+* **Weather** needs the internet. Only the place name (then its coordinates)
+  goes to Open-Meteo, and the forecast is treated as outside content.
 
 ## Memory and workflows
 
@@ -467,7 +513,7 @@ Key settings:
 
 | Section | Settings (defaults) |
 |---|---|
-| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`, `memory.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
+| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`, `memory.*`, `shortcuts.*`, `system.*`, `music.*`, `weather.*`, `timers.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
 | `[files]` | `read_roots` (`~`), `write_roots` (Desktop, Documents, Downloads), `project_roots`, `blocked_paths` (`~/Library`, `~/.Trash`), `allow_hidden` (false) |
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
@@ -475,14 +521,18 @@ Key settings:
 | `[ai]` | `isolation` (`subprocess`), `idle_unload_seconds` (300), `context_length` (8192), `gpu_layers` (-1), `include_app_names` (true), `prompt_cache` (true), `prompt_cache_max_mb` (1024), `tool_profiles` (false); `backend` (`llama_cpp`, or `server`), `server_url` (`http://127.0.0.1:8080/v1`), `allow_remote_server` (false) |
 | `[service]` | `hotkey` (`ctrl+option+cmd+j`), `show_success` (false) |
 | `[memory]` | `enabled` (true), `path`, `record_history` (true), `history_days` (30), `max_history` (1000), `share_preferences` (true) |
+| `[shortcuts]` | `trusted` (none: every run asks), `timeout_seconds` (60) |
+| `[weather]` | `location` (empty: Jarvis asks), `units` (`celsius` or `fahrenheit`), `timeout_seconds` (10) |
+| `[timers]` | `path` (`timers.sqlite3` next to memory), `sound` (`Glass`, any name in `/System/Library/Sounds`) |
 | `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
 
 An existing `config.toml` that lists `enabled_tools` keeps its list: add
-`"memory.*"` to it for the memory tools (the `jarvis memory` commands work
-either way).
+`"memory.*"`, `"shortcuts.*"`, `"system.*"`, `"music.*"`, `"weather.*"` and
+`"timers.*"` to it for those tools (the `jarvis memory` commands work either
+way).
 
 Files: config, models (incl. the speech model), the memory database
-(`memory.sqlite3`), the saved prompt state (`prompt-cache/`) and the browser
+(`memory.sqlite3`), the timers database (`timers.sqlite3`), the saved prompt state (`prompt-cache/`) and the browser
 profile in `~/Library/Application Support/Jarvis/`; logs (`jarvis.log`,
 `audit.jsonl`, `service.log`, `voice-worker.log` from the last voice request),
 background-process output and organize undo lists in `~/Library/Logs/Jarvis/`;
@@ -650,6 +700,16 @@ with no platform adapter, evidence that the core is portable).
 * OCR can't always tell a lone `0` from `O` in the system font.
 * The context window (8192 tokens) bounds how much tool output the model sees
   per request. Older results are shortened automatically.
+* Everyday commands that change things weren't run live on this Mac: volume,
+  mute and Wi-Fi changes, Music playback and a ringing timer are tested with
+  fake commands, and every Music AppleScript is compiled in the tests without
+  being sent to Music. Reading the volume, Wi-Fi, battery and dark mode, the
+  Shortcuts list and the Open-Meteo forecast were checked for real.
+* A timer rings only while the service runs and the Mac is awake: if the Mac
+  sleeps through it, it rings within a minute of waking (Jarvis doesn't wake
+  the Mac).
+* Music plays your library only (AppleScript can't search the Apple Music
+  catalogue), so "play some jazz" plays the first matching library song.
 * Push-to-talk wasn't tested with a live microphone. The recording code is
   exercised with scripted workers and transcription with synthesized speech,
   but macOS may refuse the microphone to the background service (see
