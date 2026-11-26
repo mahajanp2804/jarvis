@@ -25,8 +25,8 @@ from pydantic import ValidationError
 
 from jarvis.api.schemas import RiskLevel, ToolCall, ToolResult, ToolStatus
 from jarvis.errors import (
-    AmbiguousAppError,
     JarvisError,
+    NeedsClarificationError,
     PolicyDeniedError,
     UnknownToolError,
 )
@@ -275,7 +275,7 @@ class Dispatcher:
 
 
 def _status_for(exc: JarvisError) -> ToolStatus:
-    if isinstance(exc, AmbiguousAppError):
+    if isinstance(exc, NeedsClarificationError):
         return ToolStatus.NEEDS_CLARIFICATION
     if isinstance(exc, PolicyDeniedError):
         return ToolStatus.DENIED

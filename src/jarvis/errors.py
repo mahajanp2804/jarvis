@@ -54,7 +54,11 @@ class AppNotFoundError(JarvisError):
         super().__init__(f"No installed application matches '{query}'.", hint=hint)
 
 
-class AmbiguousAppError(JarvisError):
+class NeedsClarificationError(JarvisError):
+    """The request is ambiguous; Jarvis asks instead of guessing."""
+
+
+class AmbiguousAppError(NeedsClarificationError):
     """More than one installed application matches; the user must choose."""
 
     def __init__(self, query: str, candidates: Sequence[str]) -> None:
