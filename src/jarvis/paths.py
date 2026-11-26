@@ -79,3 +79,8 @@ def default_prompt_cache_dir() -> Path:
 def default_memory_path() -> Path:
     """The SQLite memory database (preferences, task history, workflows)."""
     return config_dir() / "memory.sqlite3"
+
+
+def default_timers_path() -> Path:
+    """The SQLite database of timers and alarms (separate from memory)."""
+    return config_dir() / "timers.sqlite3"
