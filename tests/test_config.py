@@ -37,6 +37,7 @@ def test_defaults() -> None:
         "shortcuts.*",
         "system.*",
         "music.*",
+        "weather.*",
     ]
 
 

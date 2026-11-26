@@ -49,6 +49,7 @@ def make_runtime(
         terminal: dict[str, object] | None = None,
         memory: dict[str, object] | None = None,
         shortcuts: dict[str, object] | None = None,
+        weather: dict[str, object] | None = None,
         cancel_event: threading.Event | None = None,
     ) -> tuple[Runtime, ScriptedConfirmer]:
         config = JarvisConfig.model_validate(
@@ -66,6 +67,7 @@ def make_runtime(
                 "terminal": terminal or {},
                 "memory": memory or {},
                 "shortcuts": shortcuts or {},
+                "weather": weather or {},
             }
         )
         confirmer = ScriptedConfirmer(confirm)

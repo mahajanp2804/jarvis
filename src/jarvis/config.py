@@ -47,7 +47,7 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 DEFAULT_TOOLS = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
-    "system.*", "music.*",
+    "system.*", "music.*", "weather.*",
 ]  # fmt: skip
 
 
@@ -356,6 +356,18 @@ class ShortcutsConfig(_Section):
     timeout_seconds: float = Field(default=60.0, gt=0, le=600)
 
 
+class WeatherConfig(_Section):
+    """Weather from Open-Meteo (open-meteo.com): no account or API key.
+
+    Only the place name (and then its coordinates) is sent, never anything else.
+    """
+
+    # The place used when a request names none, e.g. "Pune". Empty: Jarvis asks.
+    location: str = Field(default="", max_length=100)
+    units: Literal["celsius", "fahrenheit"] = "celsius"
+    timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+
 class MemoryConfig(_Section):
     """Persistent memory (SQLite): remembered preferences and task history.
 
@@ -456,6 +468,7 @@ class JarvisConfig(_Section):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     shortcuts: ShortcutsConfig = Field(default_factory=ShortcutsConfig)
+    weather: WeatherConfig = Field(default_factory=WeatherConfig)
 
     @model_validator(mode="after")
     def _distinct_hotkeys(self) -> JarvisConfig:
@@ -493,7 +506,7 @@ discovery_cache_seconds = 60.0
 # Screen capture/OCR is opt-in: add "screen.*".
 enabled_tools = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
-    "system.*", "music.*",
+    "system.*", "music.*", "weather.*",
 ]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.
@@ -636,6 +649,13 @@ stt_use_gpu = false
 # ones listed here, e.g. ["Water Eject"]. After outside content is read, all ask.
 trusted = []
 timeout_seconds = 60.0
+
+[weather]
+# Weather comes from Open-Meteo (no account or API key); only the place name is sent.
+# The place to use when you don't name one, e.g. "Pune". Empty: Jarvis asks.
+location = ""
+units = "celsius"   # or "fahrenheit"
+timeout_seconds = 10.0
 """
 
 

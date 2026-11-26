@@ -40,6 +40,7 @@ from jarvis.tools.screen import ScreenTools
 from jarvis.tools.shortcuts import ShortcutTools
 from jarvis.tools.system import SystemTools
 from jarvis.tools.terminal import ProcessManager, TerminalTools
+from jarvis.tools.weather import WeatherTools
 
 log = logging.getLogger(__name__)
 
@@ -194,6 +195,7 @@ def build_runtime(
     specs += ShortcutTools(platform, config.shortcuts).specs()
     specs += SystemTools(platform).specs()
     specs += MusicTools(platform).specs()
+    specs += WeatherTools(config.weather).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(
