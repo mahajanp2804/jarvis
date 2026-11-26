@@ -13,6 +13,7 @@ speech (Phase 5).
 
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -242,6 +243,18 @@ class PlatformAdapter(ABC):
     def recognize_text(self, image: Path) -> list[TextLine]:
         """On-device text recognition, lines ordered top to bottom."""
         raise UnsupportedPlatformError(f"Text recognition isn't implemented on {self.name}.")
+
+    # -- Shortcuts (Phase 8) ------------------------------------------------------------
+
+    def list_shortcuts(self) -> list[str]:
+        """Names of the user's shortcuts (Apple Shortcuts on macOS)."""
+        raise UnsupportedPlatformError(f"Shortcuts aren't available on {self.name}.")
+
+    def run_shortcut(
+        self, name: str, input_text: str | None, *, timeout: float, cancel: threading.Event
+    ) -> str:
+        """Run the shortcut called exactly ``name``; returns its text output ('' if none)."""
+        raise UnsupportedPlatformError(f"Shortcuts aren't available on {self.name}.")
 
     # -- speech (Phase 5, optional) ---------------------------------------------------
 

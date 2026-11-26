@@ -22,7 +22,11 @@ import os
 import platform
 import plistlib
 import re
+import signal
 import subprocess
+import tempfile
+import threading
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -48,6 +52,7 @@ log = logging.getLogger(__name__)
 
 OPEN_BIN = "/usr/bin/open"
 SCREENCAPTURE_BIN = "/usr/sbin/screencapture"
+SHORTCUTS_BIN = "/usr/bin/shortcuts"
 SCREEN_PERMISSION_HINT = (
     "Allow Screen Recording for the app running Jarvis (Terminal for `jarvis run`, Python "
     "for the background service) in System Settings > Privacy & Security > "
@@ -301,9 +306,16 @@ class MacOSPlatform(PlatformAdapter):
 
     name = "macOS"
 
-    def __init__(self, apps: MacOSAppControl | None = None, runner: Runner = subprocess.run):
+    def __init__(
+        self,
+        apps: MacOSAppControl | None = None,
+        runner: Runner = subprocess.run,
+        *,
+        shortcuts_bin: str = SHORTCUTS_BIN,
+    ):
         self._apps = apps or MacOSAppControl(runner=runner)
         self._run = runner
+        self._shortcuts = shortcuts_bin
 
     @property
     def apps(self) -> MacOSAppControl:
@@ -410,6 +422,58 @@ class MacOSPlatform(PlatformAdapter):
                 )
             raise ToolExecutionError(f"Screen capture failed: {detail}")
 
+    def list_shortcuts(self) -> list[str]:
+        try:
+            proc = self._run([self._shortcuts, "list"], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ToolExecutionError(f"Couldn't list your shortcuts: {exc}") from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+            raise ToolExecutionError(f"Couldn't list your shortcuts: {detail}")
+        return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+    def run_shortcut(
+        self, name: str, input_text: str | None, *, timeout: float, cancel: threading.Event
+    ) -> str:
+        # Input and output go through files in a private temporary folder.
+        with tempfile.TemporaryDirectory(prefix="jarvis-shortcut-") as folder:
+            output = Path(folder) / "output.txt"
+            argv = [self._shortcuts, "run", name, "--output-path", str(output)]
+            argv += ["--output-type", "public.plain-text"]
+            if input_text is not None:
+                given = Path(folder) / "input.txt"
+                given.write_text(input_text, encoding="utf-8")
+                argv += ["--input-path", str(given)]
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    start_new_session=True,  # its own process group, stopped as one
+                )
+            except OSError as exc:
+                raise ToolExecutionError(f"Couldn't start the shortcut: {exc.strerror}") from exc
+            deadline = time.monotonic() + timeout
+            while proc.poll() is None:
+                if cancel.is_set() or time.monotonic() > deadline:
+                    _stop_group(proc)
+                    if cancel.is_set():
+                        raise ToolExecutionError(f"Stopped the shortcut “{name}”.")
+                    raise ToolExecutionError(
+                        f"The shortcut “{name}” didn't finish within {timeout:g} s, "
+                        "so Jarvis stopped it.",
+                        hint="Raise [shortcuts] timeout_seconds for long shortcuts.",
+                    )
+                cancel.wait(0.1)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                detail = (stderr or stdout).strip() or f"exit {proc.returncode}"
+                raise ToolExecutionError(f"The shortcut “{name}” failed: {detail}")
+            if output.is_file():
+                return output.read_text(encoding="utf-8", errors="replace")
+            return stdout or ""
+
     def recognize_text(self, image: Path) -> list[TextLine]:
         try:
             import Vision
@@ -504,3 +568,17 @@ class MacOSPlatform(PlatformAdapter):
         except (OSError, subprocess.TimeoutExpired):
             return False
         return proc.stdout.strip() == "1"
+
+
+def _stop_group(proc: subprocess.Popen[str]) -> None:
+    """SIGTERM the process group, then SIGKILL if it hasn't gone after 2 s."""
+    for sig, wait in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 2.0)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            proc.wait(timeout=wait)
+            return
+        except subprocess.TimeoutExpired:
+            continue
