@@ -196,8 +196,8 @@ class TimerTools:
         return [
             ToolSpec("timers.start", "Start a timer.", StartArgs, RiskLevel.LOW,
                      self._prepare_start),
-            ToolSpec("timers.alarm", "Set an alarm or a reminder for a time of day.",
-                     AlarmArgs, RiskLevel.LOW, self._prepare_alarm),
+            ToolSpec("timers.alarm", "Set an alarm that rings on this Mac.", AlarmArgs,
+                     RiskLevel.LOW, self._prepare_alarm),
             ToolSpec("timers.list", "List the pending timers and alarms.", ListArgs,
                      RiskLevel.READ_ONLY, self._prepare_list, idempotent=True),
             ToolSpec("timers.cancel", "Cancel a timer or alarm.", CancelArgs, RiskLevel.LOW,

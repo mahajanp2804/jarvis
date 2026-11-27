@@ -13,9 +13,10 @@ be handled by the terminal tools and planner in later phases.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from jarvis.api.schemas import ToolCall
+from jarvis.dates import DateParseError, parse_day, parse_when
 from jarvis.errors import ToolInputError
 from jarvis.tools.timers import mentions_later_day, parse_alarm_time, parse_duration
 
@@ -128,10 +129,70 @@ _TIMER = re.compile(
 _ALARM = re.compile(
     r"^(?:wake\s+me(?:\s+up)?\s+(?:at\s+)?|set\s+an?\s+alarm\s+(?:for\s+)?)(?P<time>.+)$", _F
 )
-_REMIND = re.compile(
-    r"^remind\s+me\s+(?:to\s+(?P<what1>.+?)\s+(?P<when1>(?:at|in)\s+.+)"
-    r"|(?P<when2>in\s+.+?)\s+to\s+(?P<what2>.+))$",
+# "remind me to buy milk at 6 pm", "remind me tomorrow to call Sam", "remind me to stretch"
+_REMIND = re.compile(r"^remind\s+me\s+(?P<rest>.+)$", _F)
+_DAY_WORDS = {
+    "today", "tonight", "tomorrow", "this", "next", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday",
+}  # fmt: skip
+# A preposition starts the time only when a time follows: "in 20", "at 5", "on friday",
+# "in the morning" (but not "log in at 5" or "sign in tomorrow").
+_TIME_AFTER = {
+    "in": re.compile(r"^(?:\d+|an?|one|two|three|half|the\s+(?:morning|afternoon|evening))\b"),
+    "at": re.compile(r"^(?:\d{1,2}(?:[:.]\d{2})?(?:\s*[ap]\.?m\.?)?|noon|midnight)\b"),
+    "by": re.compile(r"^(?:\d{1,2}(?:[:.]\d{2})?(?:\s*[ap]\.?m\.?)?|noon|midnight|tomorrow)\b"),
+    "on": re.compile(
+        r"^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|the\s+\d|\d"
+        r"|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+        re.IGNORECASE,
+    ),
+}
+
+
+def _time_starts(words: list[str], index: int) -> bool:
+    word = words[index].lower()
+    if word in _DAY_WORDS:
+        return True
+    after = " ".join(words[index + 1 :]).lower()
+    return word in _TIME_AFTER and bool(_TIME_AFTER[word].match(after))
+
+
+def _split_reminder(rest: str) -> tuple[str, str] | None:
+    """ "to buy milk at 6 pm" -> ("buy milk", "at 6 pm"); "tomorrow to call Sam" ->
+    ("call Sam", "tomorrow"). None when the time can't be read."""
+    words = rest.split()
+    if words[0].lower() == "to":
+        body = words[1:]
+        for index in range(1, len(body)):
+            if _time_starts(body, index):
+                when = " ".join(body[index:])
+                return (" ".join(body[:index]), when) if _is_when(when) else None
+        return (" ".join(body), "") if body else None
+    if "to" in (w.lower() for w in words[1:]):
+        cut = next(i for i, w in enumerate(words) if i > 0 and w.lower() == "to")
+        when, what = " ".join(words[:cut]), " ".join(words[cut + 1 :])
+        return (what, when) if what and _time_starts(words, 0) and _is_when(when) else None
+    return None
+
+
+_LIST_REMINDERS = re.compile(
+    r"^(?:(?:show|list|read)(?:\s+me)?\s+my\s+reminders|what\s+are\s+my\s+reminders"
+    r"|my\s+reminders|what(?:'s|\s+is)\s+on\s+my\s+to-?do\s+list)$",
     _F,
+)
+_CALENDAR = re.compile(
+    r"^(?:what(?:'s|\s+is)\s+on\s+my\s+(?:calendar|schedule|agenda)|(?:show|check)\s+my"
+    r"\s+(?:calendar|schedule|agenda)|what\s+do\s+i\s+have(?=\s+(?:today|tomorrow|this|next|on)))"
+    r"(?:\s+(?:for\s+)?(?P<when>.+))?$",
+    _F,
+)
+_TEXT = re.compile(
+    r"^(?:(?:text|message|imessage)\s+(?P<to1>.+?)|send\s+(?:a\s+)?(?:text|message)\s+to"
+    r"\s+(?P<to2>.+?))\s+(?:saying|that)\s+(?P<text>.+)$",
+    _F,
+)
+_NOTE = re.compile(
+    r"^(?:(?:take|make)\s+a\s+note(?:\s*[:,]\s*|\s+(?:that|to)\s+)|note\s*:\s*)(?P<text>.+)$", _F
 )
 _LIST_TIMERS = re.compile(
     r"^(?:(?:list|show)\s+(?:my\s+|the\s+|all\s+)?(?:timers|alarms|reminders|timers\s+and"
@@ -185,13 +246,18 @@ def _route_everyday(command: str) -> ToolCall | None:
             label = (match.group("label") or "").strip(" \"'")
             return call("timers.start", duration=duration, **({"label": label} if label else {}))
         return None
-    if mentions_later_day(command) and re.match(r"^(?:remind|wake|set\s+an?\s+alarm)", command, _F):
-        return None  # only today or tomorrow: the planner explains
-    if match := _REMIND.match(command):
-        what = (match.group("what1") or match.group("what2")).strip(" \"'")
-        when = match.group("when1") or match.group("when2")
-        when = when.removeprefix("at ").strip()
-        return call("timers.alarm", time=when, label=what) if _is_time(when) else None
+    if match := _REMIND.match(command):  # the Reminders app: syncs to the iPhone
+        split = _split_reminder(match.group("rest"))
+        if split is None:
+            return None
+        what, when = split[0].strip(" \"'"), split[1]
+        if re.search(r"\b(?:later|soon|sometime|morning|afternoon|evening)\b", what, _F):
+            return None  # a time Jarvis couldn't place: let the planner ask
+        return call("reminders.add", title=what, **({"when": when} if when else {}))
+    if _LIST_REMINDERS.match(command):
+        return call("reminders.list")
+    if mentions_later_day(command) and re.match(r"^(?:wake|set\s+an?\s+alarm)", command, _F):
+        return None  # alarms ring today or tomorrow: the planner explains
     if match := _ALARM.match(command):
         time = match.group("time").strip()
         return call("timers.alarm", time=time) if _is_time(time) else None
@@ -199,6 +265,18 @@ def _route_everyday(command: str) -> ToolCall | None:
         return call("timers.list")
     if match := _CANCEL_TIMER.match(command):
         return call("timers.cancel", which=match.group("which"))
+    if match := _CALENDAR.match(command):
+        when = (match.group("when") or "").strip(" ?")
+        return (
+            call("calendar.events", **({"when": when} if when else {})) if _is_range(when) else None
+        )
+    if match := _TEXT.match(command):
+        to = (match.group("to1") or match.group("to2")).strip(" \"'")
+        return call("messages.send", to=to, text=match.group("text").strip(" \"'"))
+    if match := _NOTE.match(command):
+        text = match.group("text").strip(" \"'")
+        title = text if len(text) <= 60 else text[:57].rsplit(" ", 1)[0] + "…"
+        return call("notes.create", title=title, text=text)
     if match := _WEATHER.match(command):
         place = (match.group("place") or "").strip(" \"'")
         return call("weather.forecast", **({"location": place} if place else {}))
@@ -211,6 +289,25 @@ def _is_duration(text: str) -> bool:
     except ToolInputError:
         return False
     return True
+
+
+def _is_when(text: str) -> bool:
+    try:
+        return parse_when(text, datetime.now().astimezone()) is not None
+    except DateParseError:
+        return False
+
+
+def _is_range(text: str) -> bool:
+    """ "", "tomorrow", "this week", "on friday": a day or range Jarvis can read."""
+    if not text:
+        return True
+    try:
+        return parse_day(text, date.today()) is not None or bool(
+            re.search(r"\b(?:week|weekend|today)\b", text, _F)
+        )
+    except DateParseError:
+        return False
 
 
 def _is_time(text: str) -> bool:
