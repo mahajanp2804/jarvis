@@ -34,7 +34,7 @@ class MessageArgs(BaseModel):
 
 class EmailArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    to: str = Field(min_length=1, max_length=80, description="a name or an address")
+    to: str = Field(min_length=1, max_length=80, description='a name, "my manager", or an address')
     subject: str = Field(min_length=1, max_length=200)
     body: str = Field(default="", max_length=20_000)
 
