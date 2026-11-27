@@ -23,9 +23,13 @@ permission-gated actions on your computer:
   goes through the same validation, sandbox, permission policy, confirmation
   dialog and audit log.
 * **Everyday commands** like Siri's: volume, Wi-Fi, battery, music, timers,
-  alarms and reminders, the weather, and any of your **Apple Shortcuts**
-  (brightness, Focus, HomeKit scenes…). Common phrasings ("set a timer for 10
-  minutes", "skip this song") run instantly, without the model.
+  alarms, the weather, and any of your **Apple Shortcuts** (brightness, Focus,
+  HomeKit scenes…). Common phrasings ("set a timer for 10 minutes", "skip this
+  song") run instantly, without the model.
+* **Your apps**: Reminders, Calendar, Contacts, Notes, Messages and Mail ("remind
+  me to call the bank on friday at 5", "what's on my calendar tomorrow?", "text
+  mom that I'll be late"). Sending a text or an email always asks first and
+  shows exactly who gets what.
 * It **remembers** what you ask it to ("my editor is VS Code"), keeps a task
   history you can inspect, export and erase, and can **replay a task as a
   workflow** ("save that as morning setup"). Approvals are never remembered.
@@ -52,7 +56,7 @@ permission-gated actions on your computer:
 **Contents:** [Quick start](#quick-start-macos-apple-silicon) ·
 [Install options and uninstall](#install-options-and-uninstall) · [Tools](#tools) ·
 [Memory and workflows](#memory-and-workflows) · [Voice](#voice) ·
-[Everyday commands](#everyday-commands) · [Architecture](#architecture) · [Security model](#security-model) ·
+[Everyday commands](#everyday-commands) · [Personal apps](#personal-apps) · [Architecture](#architecture) · [Security model](#security-model) ·
 [Configuration](#configuration) · [Performance](#performance-and-trade-offs) ·
 [Testing](#testing) · [Known limitations](#known-limitations) ·
 [Troubleshooting](#troubleshooting) · [Roadmap](#roadmap)
@@ -179,7 +183,13 @@ That keeps your data. To remove everything, also delete:
 | `system.*` | `status`, `volume`, `wifi`, `sleep_display` | read-only / low; Wi-Fi off is medium | Built-in commands only (`osascript` Standard Additions, `networksetup`, `pmset`); each change reads the state back |
 | `music.*` | `status`, `control`, `play` | read-only / low | Music.app through AppleScript; your library and playlists (not the Apple Music catalogue). Needs the Automation permission |
 | `weather.*` | `forecast` | low | [Open-Meteo](https://open-meteo.com): no account or key; only the place name is sent. Home place in `[weather] location` |
-| `timers.*` | `start`, `alarm`, `list`, `cancel` | low / read-only | Timers, alarms and reminders (today or tomorrow); they ring while the service runs |
+| `timers.*` | `start`, `alarm`, `list`, `cancel` | low / read-only | Timers and alarms (today or tomorrow) that ring on this Mac while the service runs |
+| `reminders.*` | `add`, `list`, `complete` | low / read-only | The Reminders app, so reminders sync to your iPhone; days and times parsed by Jarvis |
+| `calendar.*` | `events`, `add` | read-only / medium (adding asks) | Repeating events included; event text is outside content |
+| `contacts.*` | `find` | read-only | Names, nicknames and relations on your card ("mom"); used to address texts and email |
+| `notes.*` | `search`, `read`, `create` | read-only / low | Locked notes are skipped; note text is outside content |
+| `messages.*` | `send` | high (always asks) | iMessage, or SMS through your iPhone; shows the person, number and text before sending |
+| `mail.*` | `draft`, `send` | low / high (sending always asks) | A draft opens filled in for you to send yourself |
 | `shortcuts.*` | `list`, `run` | read-only / medium | Your Apple Shortcuts. Running asks first (Jarvis can't see what a shortcut does) unless listed in `[shortcuts] trusted`; output is outside content |
 
 ### How the terminal decides
@@ -208,7 +218,7 @@ tools:
 | "how much battery do I have left?" | `system.status`: volume, Wi-Fi, battery, dark mode |
 | "turn off the screen" | `system.sleep_display` (locks if your Mac asks for a password after sleep) |
 | "pause", "skip this song", "what's playing?", "play my road trip playlist" | `music.*` |
-| "set a timer for 10 minutes for pasta", "wake me up at 7 am", "remind me to buy milk at 6 pm", "remind me in 20 minutes to stretch" | `timers.*` |
+| "set a timer for 10 minutes for pasta", "wake me up at 7 am", "set an alarm for 6:30 tomorrow" | `timers.*` (reminders go to the Reminders app: see [Personal apps](#personal-apps)) |
 | "cancel the pasta timer", "how long is left on my timer?" | `timers.cancel`, `timers.list` |
 | "what's the weather?", "weather in Pune" | `weather.forecast` |
 
@@ -231,6 +241,46 @@ What's needed:
   it runs without asking.
 * **Weather** needs the internet. Only the place name (then its coordinates)
   goes to Open-Meteo, and the forecast is treated as outside content.
+
+### Personal apps
+
+Reminders, Calendar, Contacts, Notes, Messages and Mail are controlled with
+fixed AppleScripts. Names, titles and message text are passed to them as
+arguments, never as script, so nothing in a message can change what runs.
+
+| Say | Does |
+|---|---|
+| "remind me to buy milk at 6 pm", "remind me tomorrow to water the plants", "remind me to call the bank on friday at 5" | `reminders.add` (instant; syncs to your iPhone) |
+| "show my reminders", "mark buy milk as done" | `reminders.list`, `reminders.complete` |
+| "what's on my calendar tomorrow?", "what do I have on friday", "show my schedule for next week" | `calendar.events` (instant) |
+| "add lunch with Sam on friday at 1 to my calendar" | `calendar.add`: asks first, showing "Fri 4 Dec, 1:00 to 2:00 PM" |
+| "what's Sam's phone number?" | `contacts.find` |
+| "make a note to buy coffee", "find my note about the trip" | `notes.create`, `notes.search` |
+| "text mom that I'll be late" | `messages.send`: always asks, showing "Jane Doe (+1 555 0100): “I'll be late”" |
+| "email my manager that I'm sick today" | `mail.draft` or `mail.send` (sending always asks) |
+
+What to know:
+
+* **macOS asks once per app** ("Jarvis wants to control Reminders"). If you
+  declined, turn it on in System Settings > Privacy & Security > Automation,
+  under Terminal (or Python for the service).
+* **Days and times are parsed by Jarvis**, not the model: "friday at 1",
+  "Dec 3", "the 5th", "in 20 minutes", "tomorrow morning" (9 AM). A time
+  without am/pm uses working hours ("lunch at 1" is 1 PM). Confirmations
+  show the date understood, so a misreading is visible before anything is
+  saved.
+* **Who "mom" is** comes from your own contact card (Contacts > your card >
+  related names), or a contact called Mom. When several people or numbers
+  match, Jarvis asks which one; it never guesses a recipient.
+* **Sending is never automatic.** Texts and emails are high risk: they always
+  ask, every time, whatever `confirm_at_or_above` says, and a "yes" is never
+  remembered. Messages can't confirm delivery, so Jarvis says "sent", not
+  "delivered".
+* **What your apps contain is outside content**: event invitations, shared
+  reminder lists, notes and contact cards can carry other people's text, so
+  Jarvis treats it as data and asks before any change that follows.
+* **Not yet:** calls, replying to the last message, reading messages or mail,
+  and editing or deleting events.
 
 ## Memory and workflows
 
@@ -440,6 +490,7 @@ The threats Jarvis is designed against, and where each is handled:
 | A tool touches files it shouldn't | Path sandbox: resolved symlinks, read/write roots, `~/Library` and hidden or key files blocked, nothing overwritten or permanently deleted (`tools/paths.py`) |
 | A command does damage | No shell; allowlisted programs with per-call risk; installs, pushes and destructive git always ask; `sudo`, `rm`, `curl`, shells refused (`tools/commands.py`) |
 | A "yes" is reused later | Approvals are never cached or stored; workflows replay through the full pipeline |
+| A message goes to the wrong person or says something you didn't write | Texts and emails always ask, showing the resolved name, number or address and the exact text; an unclear recipient gets "Which one?" first; no setting skips this |
 | Secrets leak to disk | Redacted logs and audit log (`0600`); memory refuses or omits secrets; secure delete on clear |
 | Another local user drives Jarvis | Control socket `0600` in a `0700` folder with a peer-uid check |
 | Jarvis listens or watches without being asked | No wake word: the microphone opens only after the shortcut; screen tools are off by default and ask every time |
@@ -515,7 +566,7 @@ Key settings:
 
 | Section | Settings (defaults) |
 |---|---|
-| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`, `memory.*`, `shortcuts.*`, `system.*`, `music.*`, `weather.*`, `timers.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
+| `[policy]` | `enabled_tools` (`apps.*`, `files.*`, `projects.*`, `terminal.*`, `browser.*`, `memory.*`, `shortcuts.*`, `system.*`, `music.*`, `weather.*`, `timers.*`, `reminders.*`, `calendar.*`, `contacts.*`, `notes.*`, `messages.*`, `mail.*`; add `"screen.*"` to opt in), `confirm_at_or_above` (`medium`), app allow/block lists |
 | `[files]` | `read_roots` (`~`), `write_roots` (Desktop, Documents, Downloads), `project_roots`, `blocked_paths` (`~/Library`, `~/.Trash`), `allow_hidden` (false) |
 | `[terminal]` | `search_path` (Homebrew + system), `extra_programs` (always ask), `timeout_seconds` (120), `startup_seconds` (10) |
 | `[browser]` | `headless` (false: you see the window), `executable`, `search_url` (Bing), `idle_close_seconds` (600) |
@@ -529,8 +580,9 @@ Key settings:
 | `[voice]` | `speak_replies` (false), `voice`, `rate`, `max_spoken_chars` (300); `push_to_talk` (false), `push_to_talk_hotkey` (`ctrl+option+cmd+k`), `stt_model_path`, `language` (`en`), `max_record_seconds` (15), `silence_seconds` (1.5), `stt_use_gpu` (false) |
 
 An existing `config.toml` that lists `enabled_tools` keeps its list: add
-`"memory.*"`, `"shortcuts.*"`, `"system.*"`, `"music.*"`, `"weather.*"` and
-`"timers.*"` to it for those tools (the `jarvis memory` commands work either
+`"memory.*"`, `"shortcuts.*"`, `"system.*"`, `"music.*"`, `"weather.*"`,
+`"timers.*"`, `"reminders.*"`, `"calendar.*"`, `"contacts.*"`, `"notes.*"`,
+`"messages.*"` and `"mail.*"` to it for those tools (the `jarvis memory` commands work either
 way).
 
 Files: config, models (incl. the speech model), the memory database
@@ -707,6 +759,12 @@ with no platform adapter, evidence that the core is portable).
   fake commands, and every Music AppleScript is compiled in the tests without
   being sent to Music. Reading the volume, Wi-Fi, battery and dark mode, the
   Shortcuts list and the Open-Meteo forecast were checked for real.
+* The personal-app tools weren't run against your real apps: every
+  Reminders, Calendar, Contacts, Notes, Messages and Mail AppleScript is
+  compiled in the tests and the tools run against fakes, but no reminder,
+  event, note, text or email was created live. Calendar reads every
+  calendar, which can take a few seconds on large ones, and an edited single
+  occurrence of a repeating event shows at its usual time.
 * A timer rings only while the service runs and the Mac is awake: if the Mac
   sleeps through it, it rings within a minute of waking (Jarvis doesn't wake
   the Mac).
