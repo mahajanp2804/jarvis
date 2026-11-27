@@ -62,23 +62,28 @@ when a phase adds the tool, its cases expect the tool instead. The test set
 lives in `src/jarvis/evals/planner_cases.toml`. It plans with the model only:
 phrasings the rule-based router handles never reach it in real use.
 
-| Category | Baseline (0.6.1, 29 tools, 92 requests) | 0.8.0 (43 tools, 101 requests) |
-|---|---|---|
-| apps | 13/13 | 12/13: lists apps for "open my web browser" |
-| files | 15/15 | 15/15 |
-| memory | 5/5 | 5/5 |
-| chat (general questions) | 8/8 | 8/8 |
-| vague (must ask) | 7/7 | 6/7: looks for "my project" instead of asking which |
-| safety (secrets, `sudo rm`, injected instructions) | 5/5 | 5/5 |
-| projects and terminal | 11/14: plans `projects.inspect` before plain commands such as `git status` | 11/14: the same |
-| browser | 8/10: asks instead of opening YouTube or looking up a price | 7/9: declines YouTube and the bitcoin price (the weather case moved to siri) |
-| siri | 8/15 (no tools: should decline) | 20/25: volume, Wi-Fi, battery, music, timers, alarms, reminders and weather use their tools; brightness and Do Not Disturb look for a shortcut. Fails: asks "which app?" for messages and calls, plans `system.status` for the calendar, "skip this song" picks `previous`, asks what "what song is this?" means |
-| **overall** | **80/92 (87%)** | **89/101 (88%)** |
+| Category | Baseline (0.6.1, 29 tools, 92 requests) | 0.8.0 (43 tools, 101 requests) | 0.9.0 (55 tools, 107 requests) |
+|---|---|---|---|
+| apps | 13/13 | 12/13 | 12/13: lists apps for "open system settings" |
+| files | 15/15 | 15/15 | 14/15: lists the folder before organizing it |
+| memory | 5/5 | 5/5 | 5/5 |
+| chat (general questions) | 8/8 | 8/8 | 8/8 |
+| vague (must ask) | 7/7 | 6/7 | 5/7: looks for "my project"; plans a quit for a bare "quit" (which asks before quitting) |
+| safety (secrets, `sudo rm`, injected instructions) | 5/5 | 5/5 | 5/5 |
+| projects and terminal | 11/14 | 11/14 | 11/14: plans `projects.find` or `files.list` before plain commands such as `git status` |
+| browser | 8/10 | 7/9 | 7/9: declines YouTube and the bitcoin price |
+| siri | 8/15 (no tools: should decline) | 20/25 | 26/31: texts, reminders, the calendar, notes and contacts use their tools. Fails: looks the manager up before emailing, checks the calendar before adding lunch, asks "text or call?" for "call dad", plans `files.search` for "mark buy milk as done", asks what "what song is this?" means |
+| **overall** | **80/92 (87%)** | **89/101 (88%)** | **93/107 (87%)** |
 
-Planning time (0.8.0): 13.4 s for the first request (it reads the
-2,400-token system prompt), then a median of 2.4 s. A real-model test fails
-if the score drops below 85%. "skip this song" and "what song is this?" are
-also router phrasings, so they run correctly without the model.
+Planning time (0.9.0): 10.6 s for the first request (it reads the system
+prompt), then a median of 1.8 s. A real-model test fails if the score drops
+below 85%. "skip this song", "what song is this?" and "mark buy milk as done"
+are also router phrasings, so they run correctly without the model.
+
+The first 0.9.0 run scored 91/107 (85%): a Phase 7 example declining "send
+an email to Sam" and a rule naming email and messages as impossible taught
+the model to ask "which messaging app?". Replacing them (an example that
+texts with `messages.send`, a declined phone call) gave 93/107.
 
 ## Tool profiles (`[ai] tool_profiles`, off by default)
 
