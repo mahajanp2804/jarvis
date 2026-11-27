@@ -53,7 +53,13 @@ _KEYWORDS: dict[str, re.Pattern[str]] = {
             r"\b(?:weather|forecast|temperature|rain(?:ing|y)?|snow(?:ing|y)?|umbrella|sunny"
             r"|humid(?:ity)?)\b"
         ),
-        "timers": r"\b(?:timers?|alarms?|remind(?:er|ers)?|wake me)\b",
+        "timers": r"\b(?:timers?|alarms?|wake me)\b",
+        "reminders": r"\bremind(?:ers?)?\b",
+        "calendar": r"\b(?:calendar|schedule|meetings?|appointments?|agenda|events?)\b",
+        "contacts": r"\b(?:contacts?|phone numbers?|number for|address for)\b",
+        "notes": r"\bnotes?\b",
+        "messages": r"\b(?:text|texts|message|messages|imessage|sms)\b",
+        "mail": r"\b(?:e-?mails?|mail)\b",
         "music": (
             r"\b(?:music|songs?|playlists?|albums?|play(?:ing)?|pause|resume|skip|track"
             r"|jazz|rock|pop|classical|hip hop|lo-?fi)\b"
@@ -69,6 +75,22 @@ PROFILES: tuple[tuple[str, frozenset[str]], ...] = (
         "everyday",
         frozenset({"apps", "system", "music", "shortcuts", "weather", "timers", "memory"}),
     ),
+    (
+        "personal",
+        frozenset(
+            {
+                "apps",
+                "reminders",
+                "calendar",
+                "contacts",
+                "notes",
+                "messages",
+                "mail",
+                "timers",
+                "memory",
+            }
+        ),
+    ),
     ("web", frozenset({"apps", "browser", "files", "memory"})),
     ("dev", frozenset({"apps", "files", "projects", "terminal", "memory"})),
 )
@@ -83,6 +105,10 @@ def wanted_groups(request: str) -> set[str]:
             found.add("browser")
     if "weather" in found and found & {"projects", "terminal"}:
         found.discard("weather")  # "find my weather app project"
+    if {"notes", "files"} <= found:  # "make a note", "read my note about the trip"
+        generic = re.sub(r"\b(?:make|create|read)\b", "", request, flags=re.IGNORECASE)
+        if not _KEYWORDS["files"].search(generic):
+            found.discard("files")
     if {"shortcuts", "terminal"} <= found:  # "run my Water Eject shortcut"
         without_run = re.sub(r"\brun\b", "", request, flags=re.IGNORECASE)
         if not _KEYWORDS["terminal"].search(without_run):

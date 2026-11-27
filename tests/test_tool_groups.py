@@ -24,7 +24,12 @@ from jarvis.evaluation import load_cases
         ("run my water eject shortcut", "everyday"),
         ("play some jazz", "everyday"),
         ("set a timer for 10 minutes", "everyday"),
-        ("remind me to buy milk at 6 pm", "everyday"),
+        ("remind me to buy milk at 6 pm", "personal"),
+        ("what's on my calendar tomorrow?", "personal"),
+        ("text mom that I'll be late", "personal"),
+        ("email my manager that I'm sick today", "personal"),
+        ("what's Sam's phone number?", "personal"),
+        ("make a note to buy coffee", "personal"),
         ("wake me up at 7 am tomorrow", "everyday"),
         ("pause the music", "everyday"),
         ("play the first video on youtube", "all"),  # music and web
