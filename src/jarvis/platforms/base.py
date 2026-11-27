@@ -272,6 +272,34 @@ class ContactsBook(ABC):
 
 
 @dataclass(frozen=True)
+class Note:
+    """A note in the Notes app (Phase 9)."""
+
+    id: str
+    title: str
+    folder: str
+    modified: datetime | None = None
+    text: str = ""  # plain text; a short excerpt in search results
+
+
+class NotesApp(ABC):
+    """The Notes app."""
+
+    @abstractmethod
+    def search(self, words: str, limit: int = 20) -> list[Note]:
+        """Notes whose title or text contains ``words``, newest first, with excerpts.
+        Locked notes are left out."""
+
+    @abstractmethod
+    def read(self, note_id: str) -> Note:
+        """The note with its full plain text."""
+
+    @abstractmethod
+    def create(self, title: str, text: str, folder: str | None = None) -> Note:
+        """A new note (in the default folder when ``folder`` is None)."""
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -429,6 +457,9 @@ class PlatformAdapter(ABC):
 
     def contacts(self) -> ContactsBook:
         raise UnsupportedPlatformError(f"Contacts aren't available on {self.name}.")
+
+    def notes(self) -> NotesApp:
+        raise UnsupportedPlatformError(f"Notes isn't available on {self.name}.")
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
         """Play an alert sound in the background, for timers and alarms. Never raises."""

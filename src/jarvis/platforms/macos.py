@@ -39,6 +39,7 @@ from jarvis.platforms.base import (
     ContactsBook,
     DiagnosticCheck,
     MusicPlayer,
+    NotesApp,
     PlatformAdapter,
     ProcessStats,
     RemindersApp,
@@ -453,6 +454,11 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_contacts import MacContacts
 
         return MacContacts(runner=self._run)
+
+    def notes(self) -> NotesApp:
+        from jarvis.platforms.macos_notes import MacNotes
+
+        return MacNotes(runner=self._run)
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         path = SYSTEM_SOUNDS / f"{sound}.aiff"
