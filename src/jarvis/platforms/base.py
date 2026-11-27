@@ -208,6 +208,51 @@ class RemindersApp(ABC):
 
 
 @dataclass(frozen=True)
+class CalendarEvent:
+    """One occurrence of an event in the Calendar app (Phase 9)."""
+
+    id: str
+    title: str
+    calendar: str
+    start: datetime
+    end: datetime
+    all_day: bool = False
+    location: str = ""
+
+
+@dataclass(frozen=True)
+class EventListing:
+    events: list[CalendarEvent]
+    # Things the listing may have missed, e.g. repeating events it couldn't read.
+    notes: list[str] = field(default_factory=list)
+
+
+class CalendarApp(ABC):
+    """The Calendar app."""
+
+    @abstractmethod
+    def calendars(self) -> list[str]:
+        """Calendars that events can be added to."""
+
+    @abstractmethod
+    def events(self, start: datetime, end: datetime) -> EventListing:
+        """Occurrences overlapping [start, end), repeating events included, soonest first."""
+
+    @abstractmethod
+    def add_event(
+        self,
+        title: str,
+        start: datetime,
+        end: datetime,
+        *,
+        all_day: bool = False,
+        calendar: str | None = None,
+        location: str = "",
+    ) -> CalendarEvent:
+        """Add an event (to the first writable calendar when ``calendar`` is None)."""
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -359,6 +404,9 @@ class PlatformAdapter(ABC):
 
     def reminders(self) -> RemindersApp:
         raise UnsupportedPlatformError(f"Reminders aren't available on {self.name}.")
+
+    def calendar(self) -> CalendarApp:
+        raise UnsupportedPlatformError(f"Calendar isn't available on {self.name}.")
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
         """Play an alert sound in the background, for timers and alarms. Never raises."""

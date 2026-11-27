@@ -35,6 +35,7 @@ from jarvis.errors import OSPermissionError, ToolExecutionError, UnsupportedPlat
 from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
+    CalendarApp,
     DiagnosticCheck,
     MusicPlayer,
     PlatformAdapter,
@@ -441,6 +442,11 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_reminders import MacReminders
 
         return MacReminders(runner=self._run)
+
+    def calendar(self) -> CalendarApp:
+        from jarvis.platforms.macos_calendar import MacCalendar
+
+        return MacCalendar(runner=self._run)
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         path = SYSTEM_SOUNDS / f"{sound}.aiff"
