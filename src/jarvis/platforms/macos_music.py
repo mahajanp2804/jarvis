@@ -14,16 +14,12 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 
-from jarvis.errors import OSPermissionError, ToolExecutionError
+from jarvis.platforms.applescript import AppleScript, Runner
 from jarvis.platforms.base import MusicPlayer, NowPlaying
 
-OSASCRIPT = "/usr/bin/osascript"
 # Long enough for the user to answer macOS's first Automation prompt.
 TIMEOUT_SECONDS = 30
-
-Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 
 NOW_PLAYING = """\
 if application "Music" is not running then return "not running"
@@ -74,8 +70,6 @@ end run"""
 
 ALL_SCRIPTS = (NOW_PLAYING, *COMMANDS.values(), PLAYLISTS, PLAY_PLAYLIST, PLAY_SEARCH)
 
-_NOT_ALLOWED = ("-1743", "not authorized to send apple events", "not allowed to send")
-
 
 def parse_now_playing(text: str) -> NowPlaying:
     lines = text.rstrip("\n").split("\n")
@@ -86,31 +80,7 @@ def parse_now_playing(text: str) -> NowPlaying:
 
 class MacMusicPlayer(MusicPlayer):
     def __init__(self, runner: Runner = subprocess.run) -> None:
-        self._run = runner
-
-    def _script(self, script: str, what: str, *args: str) -> str:
-        try:
-            proc = self._run(
-                [OSASCRIPT, "-e", script, *args],
-                capture_output=True, text=True, timeout=TIMEOUT_SECONDS,
-            )  # fmt: skip
-        except subprocess.TimeoutExpired as exc:
-            raise ToolExecutionError(
-                f"Music didn't answer while trying to {what}.",
-                hint="If macOS asked whether Jarvis may control Music, click OK and try again.",
-            ) from exc
-        except OSError as exc:
-            raise ToolExecutionError(f"Couldn't {what}: {exc}") from exc
-        if proc.returncode != 0:
-            error = (proc.stderr or proc.stdout or "").strip()
-            if any(marker in error.lower() for marker in _NOT_ALLOWED):
-                raise OSPermissionError(
-                    "macOS doesn't allow Jarvis to control Music.",
-                    hint="System Settings > Privacy & Security > Automation: turn on Music "
-                    "for the app that runs Jarvis (Terminal, or Python for the service).",
-                )
-            raise ToolExecutionError(f"Couldn't {what}: {error or proc.returncode}")
-        return proc.stdout or ""
+        self._script = AppleScript("Music", runner, timeout=TIMEOUT_SECONDS)
 
     def now_playing(self) -> NowPlaying:
         return parse_now_playing(self._script(NOW_PLAYING, "read what's playing"))
