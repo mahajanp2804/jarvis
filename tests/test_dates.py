@@ -71,6 +71,10 @@ def test_parse_when() -> None:
     whole_day = parse_when("Dec 3", now)
     assert whole_day is not None and whole_day.at is None
     assert parse_when("call mom", now) is None
+    assert describe_when(parse_when("tomorrow morning", now), TODAY) == "tomorrow at 9:00 AM"
+    assert describe_when(parse_when("friday afternoon", now), TODAY) == "Fri 4 Dec at 2:00 PM"
+    assert describe_when(parse_when("tonight", now), TODAY) == "today at 8:00 PM"
+    assert describe_when(parse_when("tonight at 9:30", now), TODAY) == "today at 9:30 PM"
     assert describe_when(parse_when("in 20 minutes", now), TODAY) == "today at 4:20 PM"
     assert describe_when(parse_when("in half an hour", now), TODAY) == "today at 4:30 PM"
     assert describe_when(parse_when("in 9 hours", now), TODAY) == "tomorrow at 1:00 AM"

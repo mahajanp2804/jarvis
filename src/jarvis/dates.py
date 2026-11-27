@@ -9,6 +9,7 @@ through, and every confirmation shows the exact date that was understood
   "next friday" is the first one after today.
 * A time without am/pm on a given day uses working hours: 7-11 are morning,
   12-6 afternoon ("lunch at 1" is 1 PM). "07:30" and "18:45" are as written.
+* Parts of the day: morning 9 AM, afternoon 2 PM, evening 6 PM, tonight 8 PM.
 * A month and day without a year is the next one: "Jan 5" in December is
   next year.
 """
@@ -52,6 +53,14 @@ _AT_CLOCK = re.compile(
     r"\b(?:at|by|from)\s+(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])", re.I
 )
 _WORD_NUMBERS = {"a": 1, "one": 1, "two": 2, "three": 3}
+# Parts of the day without a clock time, as phones read them.
+_PARTS_OF_DAY = {
+    "morning": time(9),
+    "afternoon": time(14),
+    "evening": time(18),
+    "tonight": time(20),
+}
+_PART_OF_DAY = re.compile(r"\b(morning|afternoon|evening|tonight)\b", re.IGNORECASE)
 _IN_TIME = re.compile(
     r"\bin\s+(\d{1,3}|an?|one|two|three|half an?)\s*(minutes?|mins?|hours?|hrs?)\b", re.I
 )
@@ -118,6 +127,8 @@ def parse_time(text: str, *, working_hours: bool = True) -> time | None:
     if re.search(r"\bmidnight\b", words):
         return time(0, 0)
     match = _AT_CLOCK.search(words)
+    if match is None and (part := _PART_OF_DAY.search(words)):
+        return _PARTS_OF_DAY[part.group(1)]
     if match is None:
         # "7pm" or "18:45"; a bare number is a day or a count, not a time
         match = next((m for m in _CLOCK.finditer(words) if m.group(3) or m.group(2)), None)
@@ -129,6 +140,8 @@ def parse_time(text: str, *, working_hours: bool = True) -> time | None:
         if not 1 <= hour <= 12:
             raise DateParseError(f"{match.group(0).strip()} isn't a time.")
         hour = hour % 12 + (12 if meridiem == "pm" else 0)
+    elif re.search(r"\b(?:tonight|evening|night)\b", words) and 1 <= hour < 12:
+        hour += 12  # "tonight at 9:30" is 9:30 PM
     elif working_hours and 1 <= hour <= 6 and not match.group(1).startswith("0"):
         hour += 12  # "at 1" is 1 PM
     if hour > 23 or minute > 59:
