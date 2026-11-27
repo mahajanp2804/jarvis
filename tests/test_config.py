@@ -41,6 +41,7 @@ def test_defaults() -> None:
         "timers.*",
         "reminders.*",
         "calendar.*",
+        "contacts.*",
     ]
 
 

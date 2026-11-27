@@ -17,6 +17,8 @@ from jarvis.platforms.base import (
     AppInfo,
     CalendarApp,
     CalendarEvent,
+    Contact,
+    ContactsBook,
     DiagnosticCheck,
     EventListing,
     MusicPlayer,
@@ -243,6 +245,27 @@ class FakeCalendar(CalendarApp):
         return event
 
 
+class FakeContacts(ContactsBook):
+    """An address book in memory; your card lists Jane as your mother."""
+
+    def __init__(self) -> None:
+        self.people = [
+            Contact("p1", "Jane Doe", (("mobile", "+1 555 0100"), ("home", "+1 555 0199")),
+                    (("home", "jane@example.com"),)),
+            Contact("p2", "Sam Lee", (("work", "+1 555 0142"),), (("work", "sam@example.org"),)),
+            Contact("p3", "Sam Patel", (("mobile", "+1 555 0177"),), ()),
+        ]  # fmt: skip
+        self.relations = {"mother": "Jane Doe"}
+        self.queries: list[tuple[str, str | None]] = []
+
+    def find(self, name: str, relation: str | None = None) -> list[Contact]:
+        self.queries.append((name, relation))
+        found = [p for p in self.people if name.casefold() in p.name.casefold()]
+        related = self.relations.get(relation or "")
+        found += [p for p in self.people if p.name == related and p not in found]
+        return found
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -258,6 +281,7 @@ class FakePlatform(PlatformAdapter):
         self.alerts: list[str] = []
         self.reminder_app = FakeReminders()
         self.calendar_app = FakeCalendar()
+        self.contact_book = FakeContacts()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -290,6 +314,9 @@ class FakePlatform(PlatformAdapter):
 
     def calendar(self) -> CalendarApp:
         return self.calendar_app
+
+    def contacts(self) -> ContactsBook:
+        return self.contact_book
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""
