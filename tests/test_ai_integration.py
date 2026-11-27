@@ -79,7 +79,8 @@ def test_search_request_uses_list_tool(runtime: Runtime) -> None:
 
 
 def test_unsupported_request_is_declined(runtime: Runtime) -> None:
-    action, steps = plan_tools(runtime, "send an email to my manager saying that I am sick")
+    # Email and messages have tools since 0.9.0; moving money never will.
+    action, steps = plan_tools(runtime, "transfer 50 dollars to Sam")
     assert action is PlanAction.RESPOND
     assert steps == []
 
@@ -299,7 +300,7 @@ def test_read_a_file_and_answer(agent: tuple[Runtime, ScriptedConfirmer]) -> Non
     assert "passport" in reply.text.lower()
 
 
-# Today's score is 89/101 (88%), Nov 2026 (0.8.0). Raise the floor as phases improve it;
+# Today's score is 93/107 (87%), Nov 2026 (0.9.0). Raise the floor as phases improve it;
 # a drop below it means a change made the planner worse.
 EVAL_FLOOR = 0.85
 
