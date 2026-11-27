@@ -52,6 +52,9 @@ _AT_CLOCK = re.compile(
     r"\b(?:at|by|from)\s+(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])", re.I
 )
 _WORD_NUMBERS = {"a": 1, "one": 1, "two": 2, "three": 3}
+_IN_TIME = re.compile(
+    r"\bin\s+(\d{1,3}|an?|one|two|three|half an?)\s*(minutes?|mins?|hours?|hrs?)\b", re.I
+)
 
 
 class DateParseError(ValueError):
@@ -143,8 +146,15 @@ class When:
 
 
 def parse_when(text: str, now: datetime) -> When | None:
-    """A day and maybe a time: "friday at 1", "tomorrow", "at 3pm" (today). None if neither."""
+    """A day and maybe a time: "friday at 1", "tomorrow", "at 3pm" (today), "in 20 minutes".
+    None if neither."""
     local = now.astimezone()
+    if match := _IN_TIME.search(text):
+        amount = match.group(1).lower()
+        count = 0.5 if amount.startswith("half") else _WORD_NUMBERS.get(amount) or int(amount)
+        minutes = count * (60 if match.group(2).lower().startswith("h") else 1)
+        moment = (local + timedelta(minutes=minutes)).replace(second=0, microsecond=0)
+        return When(moment.date(), moment.time())
     day = parse_day(text, local.date())
     at = parse_time(text)
     if day is None and at is None:
