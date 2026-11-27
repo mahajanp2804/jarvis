@@ -38,6 +38,7 @@ from jarvis.tools.memory import MemoryTools
 from jarvis.tools.music import MusicTools
 from jarvis.tools.paths import PathPolicy
 from jarvis.tools.projects import ProjectTools
+from jarvis.tools.reminders import ReminderTools
 from jarvis.tools.screen import ScreenTools
 from jarvis.tools.shortcuts import ShortcutTools
 from jarvis.tools.system import SystemTools
@@ -207,6 +208,7 @@ def build_runtime(
     timers = TimerStore(config.timers.resolved_path())  # the file opens on first use
     timer_notifier = TimerNotifier()
     specs += TimerTools(timers, changed=timer_notifier.changed).specs()
+    specs += ReminderTools(platform).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(

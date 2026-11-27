@@ -7,6 +7,7 @@ import os
 import threading
 from collections import deque
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ from jarvis.platforms.base import (
     MusicPlayer,
     NowPlaying,
     PlatformAdapter,
+    Reminder,
+    RemindersApp,
     SystemControls,
     SystemState,
     TextLine,
@@ -167,6 +170,42 @@ class FakeMusicPlayer(MusicPlayer):
         return None
 
 
+class FakeReminders(RemindersApp):
+    """Reminder lists in memory."""
+
+    def __init__(self) -> None:
+        self.list_names = ["Reminders", "Groceries"]
+        self.items: list[Reminder] = []
+        self.completed: list[str] = []
+
+    def lists(self) -> list[str]:
+        return list(self.list_names)
+
+    def open_reminders(self, list_name: str | None = None) -> list[Reminder]:
+        return [
+            r for r in self.items
+            if r.id not in self.completed and (list_name is None or r.list_name == list_name)
+        ]  # fmt: skip
+
+    def add(
+        self,
+        title: str,
+        list_name: str | None = None,
+        due: datetime | None = None,
+        *,
+        all_day: bool = False,
+        notes: str = "",
+    ) -> Reminder:
+        reminder = Reminder(
+            f"r{len(self.items) + 1}", title, list_name or "Reminders", due, all_day
+        )
+        self.items.append(reminder)
+        return reminder
+
+    def complete(self, reminder_id: str) -> None:
+        self.completed.append(reminder_id)
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -180,6 +219,7 @@ class FakePlatform(PlatformAdapter):
         self.system = FakeSystemControls()
         self.player = FakeMusicPlayer()
         self.alerts: list[str] = []
+        self.reminder_app = FakeReminders()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -206,6 +246,9 @@ class FakePlatform(PlatformAdapter):
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         self.alerts.append(sound)
+
+    def reminders(self) -> RemindersApp:
+        return self.reminder_app
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""

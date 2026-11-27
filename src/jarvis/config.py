@@ -49,6 +49,7 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 DEFAULT_TOOLS = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
     "system.*", "music.*", "weather.*", "timers.*",
+    "reminders.*",
 ]  # fmt: skip
 
 
@@ -523,6 +524,7 @@ discovery_cache_seconds = 60.0
 enabled_tools = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
     "system.*", "music.*", "weather.*", "timers.*",
+    "reminders.*",
 ]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.

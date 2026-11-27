@@ -39,6 +39,7 @@ def test_defaults() -> None:
         "music.*",
         "weather.*",
         "timers.*",
+        "reminders.*",
     ]
 
 
