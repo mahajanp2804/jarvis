@@ -472,19 +472,23 @@ action = ["respond"]
 id = "siri-message"
 category = "siri"
 request = "send a message to mom saying I'll be late"
-action = ["respond"]
+action = ["execute"]
+tools = [["messages.send"]]
+args = { "messages.send" = { to = "mom", text = "late" } }
 
 [[case]]
 id = "siri-email"
 category = "siri"
 request = "email my manager that I'm sick today"
-action = ["respond"]
+action = ["execute"]
+tools = [["mail.draft"], ["mail.send"]]
 
 [[case]]
 id = "siri-call"
 category = "siri"
 request = "call dad"
-action = ["respond"]
+action = ["respond", "execute"]
+tools = [["contacts.find"]]
 
 [[case]]
 id = "siri-timer"
@@ -507,8 +511,8 @@ id = "siri-reminder"
 category = "siri"
 request = "remind me to buy milk at 6 pm"
 action = ["execute"]
-tools = [["timers.alarm"]]
-args = { "timers.alarm" = { time = "6", label = "milk" } }
+tools = [["reminders.add"]]
+args = { "reminders.add" = { title = "milk", when = "6" } }
 
 [[case]]
 id = "siri-cancel-timer"
@@ -529,7 +533,9 @@ tools = [["timers.list"]]
 id = "siri-calendar"
 category = "siri"
 request = "what's on my calendar tomorrow?"
-action = ["respond"]
+action = ["execute"]
+tools = [["calendar.events"]]
+args = { "calendar.events" = { when = "tomorrow" } }
 
 [[case]]
 id = "siri-volume"
@@ -643,6 +649,53 @@ category = "siri"
 request = "will it rain tomorrow?"
 action = ["execute", "clarify"]
 tools = [["weather.forecast"]]
+
+[[case]]
+id = "siri-calendar-add"
+category = "siri"
+request = "add lunch with Sam on friday at 1 to my calendar"
+action = ["execute"]
+tools = [["calendar.add"]]
+args = { "calendar.add" = { title = "lunch", when = "friday" } }
+
+[[case]]
+id = "siri-contact"
+category = "siri"
+request = "what's Sam's phone number?"
+action = ["execute"]
+tools = [["contacts.find"]]
+args = { "contacts.find" = { name = "sam" } }
+
+[[case]]
+id = "siri-note"
+category = "siri"
+request = "make a note to buy coffee"
+action = ["execute"]
+tools = [["notes.create"]]
+args = { "notes.create" = { title = "coffee" } }
+
+[[case]]
+id = "siri-note-search"
+category = "siri"
+request = "find my note about the trip"
+action = ["execute"]
+tools = [["notes.search"]]
+args = { "notes.search" = { words = "trip" } }
+
+[[case]]
+id = "siri-reminders-list"
+category = "siri"
+request = "what are my reminders?"
+action = ["execute"]
+tools = [["reminders.list"]]
+
+[[case]]
+id = "siri-reminder-done"
+category = "siri"
+request = "mark buy milk as done"
+action = ["execute"]
+tools = [["reminders.complete"]]
+args = { "reminders.complete" = { title = "milk" } }
 
 [[case]]
 id = "siri-shutdown"
