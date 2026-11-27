@@ -4,6 +4,41 @@ Versions follow the development phases: `0.<phase>.<fix>` until 1.0. Dates are
 when each phase was finished. Earlier phases had no version bump; their
 entries are reconstructed from the commit history.
 
+## 0.9.0: Personal apps (Phase 9, 2026-11-28)
+
+- **Reminders** (`reminders.add`, `list`, `complete`): reminders go to the
+  Reminders app, so they sync to your iPhone. "Remind me to …" now goes here
+  instead of a Mac-only alarm, and later days work ("on friday at 5").
+- **Calendar** (`calendar.events`, `calendar.add`): what's on a day or a week,
+  with repeating events expanded from their rules (AppleScript returns them
+  only at their first date). A rule Jarvis can't expand is reported, not
+  skipped. Adding an event asks first and shows the exact day and times.
+- **Contacts** (`contacts.find`) and recipient lookup: names, nicknames and
+  the relations on your own card ("mom", "my wife"). When several people or
+  numbers match, Jarvis asks which one instead of guessing.
+- **Notes** (`notes.search`, `read`, `create`): locked notes are skipped, and
+  a new note's text is HTML-escaped.
+- **Messages and Mail** (`messages.send`, `mail.draft`, `mail.send`): sending
+  always asks, every time, with the person, the exact number or address and
+  the text in the confirmation; no setting skips it. A draft opens filled in
+  for you to send.
+- Every app is driven by fixed AppleScripts through one shared runner. Names,
+  titles and text go in argv, never into a script, and each script is
+  compiled in the tests without being sent to the app.
+- A date and time parser (`jarvis/dates.py`): "friday at 1", "Dec 3rd", "the
+  5th", "in 20 minutes", "tomorrow morning", "this week". A time without
+  am/pm uses working hours, and replies show the date understood.
+- Instant phrasings: "remind me …", "show my reminders", "what's on my
+  calendar tomorrow?", "text mom that I'll be late" (still asks first), "make
+  a note to buy coffee".
+- A personal tool profile, and a smaller plan grammar: string limits above 80
+  characters are left to validation, keeping the grammar ~41 KB with 50 tools.
+- The planner prompt no longer declines email and messages: a Phase 7
+  example ("send an email to Sam" → "I can't") now texts with
+  `messages.send`, and the "can't do" example is a phone call.
+- `jarvis eval`: 93/107 (87%) with 55 tools (89/101 in 0.8.0); Siri-style
+  requests 26/31. 14 real-model tests pass.
+
 ## 0.8.0: Everyday commands (Phase 8, 2026-11-26)
 
 - **Apple Shortcuts** (`shortcuts.list`, `shortcuts.run`): run any of your
