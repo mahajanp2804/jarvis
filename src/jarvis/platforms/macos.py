@@ -36,6 +36,7 @@ from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
     CalendarApp,
+    ContactsBook,
     DiagnosticCheck,
     MusicPlayer,
     PlatformAdapter,
@@ -447,6 +448,11 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_calendar import MacCalendar
 
         return MacCalendar(runner=self._run)
+
+    def contacts(self) -> ContactsBook:
+        from jarvis.platforms.macos_contacts import MacContacts
+
+        return MacContacts(runner=self._run)
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         path = SYSTEM_SOUNDS / f"{sound}.aiff"

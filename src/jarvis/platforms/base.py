@@ -253,6 +253,25 @@ class CalendarApp(ABC):
 
 
 @dataclass(frozen=True)
+class Contact:
+    """A person in the Contacts app (Phase 9)."""
+
+    id: str
+    name: str
+    phones: tuple[tuple[str, str], ...] = ()  # (label, number), e.g. ("mobile", "+1 555 0100")
+    emails: tuple[tuple[str, str], ...] = ()  # (label, address)
+
+
+class ContactsBook(ABC):
+    """The Contacts app."""
+
+    @abstractmethod
+    def find(self, name: str, relation: str | None = None) -> list[Contact]:
+        """People whose name or nickname contains ``name``; with ``relation``
+        ("mother"), also the person your own card lists by that relation."""
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -407,6 +426,9 @@ class PlatformAdapter(ABC):
 
     def calendar(self) -> CalendarApp:
         raise UnsupportedPlatformError(f"Calendar isn't available on {self.name}.")
+
+    def contacts(self) -> ContactsBook:
+        raise UnsupportedPlatformError(f"Contacts aren't available on {self.name}.")
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
         """Play an alert sound in the background, for timers and alarms. Never raises."""
