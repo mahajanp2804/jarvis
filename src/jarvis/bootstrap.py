@@ -37,6 +37,7 @@ from jarvis.tools.calendar import CalendarTools
 from jarvis.tools.contacts import ContactTools
 from jarvis.tools.files import FileTools
 from jarvis.tools.memory import MemoryTools
+from jarvis.tools.messaging import MessagingTools
 from jarvis.tools.music import MusicTools
 from jarvis.tools.notes import NoteTools
 from jarvis.tools.paths import PathPolicy
@@ -215,6 +216,7 @@ def build_runtime(
     specs += CalendarTools(platform).specs()
     specs += ContactTools(platform).specs()
     specs += NoteTools(platform).specs()
+    specs += MessagingTools(platform).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(

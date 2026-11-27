@@ -50,6 +50,7 @@ DEFAULT_TOOLS = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
     "system.*", "music.*", "weather.*", "timers.*",
     "reminders.*", "calendar.*", "contacts.*", "notes.*",
+    "messages.*", "mail.*",
 ]  # fmt: skip
 
 
@@ -525,6 +526,7 @@ enabled_tools = [
     "apps.*", "files.*", "projects.*", "terminal.*", "browser.*", "memory.*", "shortcuts.*",
     "system.*", "music.*", "weather.*", "timers.*",
     "reminders.*", "calendar.*", "contacts.*", "notes.*",
+    "messages.*", "mail.*",
 ]
 # Actions at or above this risk need confirmation: read_only, low, medium, high.
 # High and critical actions always need confirmation.

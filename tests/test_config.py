@@ -43,6 +43,8 @@ def test_defaults() -> None:
         "calendar.*",
         "contacts.*",
         "notes.*",
+        "messages.*",
+        "mail.*",
     ]
 
 

@@ -21,6 +21,8 @@ from jarvis.platforms.base import (
     ContactsBook,
     DiagnosticCheck,
     EventListing,
+    MailApp,
+    Messenger,
     MusicPlayer,
     Note,
     NotesApp,
@@ -288,6 +290,21 @@ class FakeNotes(NotesApp):
         return note
 
 
+class FakeMessenger(Messenger, MailApp):
+    """Records what would have been sent; nothing leaves the test."""
+
+    def __init__(self) -> None:
+        self.texts: list[tuple[str, str]] = []
+        self.emails: list[tuple[str, str, str, bool]] = []
+
+    def send(self, handle: str, text: str) -> str:
+        self.texts.append((handle, text))
+        return "iMessage"
+
+    def compose(self, to: str, subject: str, body: str, *, send: bool) -> None:
+        self.emails.append((to, subject, body, send))
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -305,6 +322,7 @@ class FakePlatform(PlatformAdapter):
         self.calendar_app = FakeCalendar()
         self.contact_book = FakeContacts()
         self.notes_app = FakeNotes()
+        self.outbox = FakeMessenger()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -343,6 +361,12 @@ class FakePlatform(PlatformAdapter):
 
     def notes(self) -> NotesApp:
         return self.notes_app
+
+    def messages(self) -> Messenger:
+        return self.outbox
+
+    def mail(self) -> MailApp:
+        return self.outbox
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""
