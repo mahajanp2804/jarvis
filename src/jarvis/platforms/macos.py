@@ -39,6 +39,7 @@ from jarvis.platforms.base import (
     MusicPlayer,
     PlatformAdapter,
     ProcessStats,
+    RemindersApp,
     ServiceManager,
     SystemControls,
     TextLine,
@@ -435,6 +436,11 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_music import MacMusicPlayer
 
         return MacMusicPlayer(runner=self._run)
+
+    def reminders(self) -> RemindersApp:
+        from jarvis.platforms.macos_reminders import MacReminders
+
+        return MacReminders(runner=self._run)
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         path = SYSTEM_SOUNDS / f"{sound}.aiff"

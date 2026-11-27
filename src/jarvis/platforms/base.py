@@ -17,6 +17,7 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -170,6 +171,43 @@ class MusicPlayer(ABC):
 
 
 @dataclass(frozen=True)
+class Reminder:
+    """One reminder in the Reminders app (Phase 9)."""
+
+    id: str
+    title: str
+    list_name: str
+    due: datetime | None = None  # local time; midnight for a whole-day reminder
+    all_day: bool = False
+
+
+class RemindersApp(ABC):
+    """The Reminders app."""
+
+    @abstractmethod
+    def lists(self) -> list[str]: ...
+
+    @abstractmethod
+    def open_reminders(self, list_name: str | None = None) -> list[Reminder]:
+        """Reminders not yet completed, from one list or all of them."""
+
+    @abstractmethod
+    def add(
+        self,
+        title: str,
+        list_name: str | None = None,
+        due: datetime | None = None,
+        *,
+        all_day: bool = False,
+        notes: str = "",
+    ) -> Reminder:
+        """Add a reminder (to the default list when ``list_name`` is None)."""
+
+    @abstractmethod
+    def complete(self, reminder_id: str) -> None: ...
+
+
+@dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
 
@@ -318,6 +356,9 @@ class PlatformAdapter(ABC):
 
     def music(self) -> MusicPlayer:
         raise UnsupportedPlatformError(f"Music controls aren't implemented on {self.name}.")
+
+    def reminders(self) -> RemindersApp:
+        raise UnsupportedPlatformError(f"Reminders aren't available on {self.name}.")
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
         """Play an alert sound in the background, for timers and alarms. Never raises."""
