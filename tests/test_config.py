@@ -40,6 +40,7 @@ def test_defaults() -> None:
         "weather.*",
         "timers.*",
         "reminders.*",
+        "calendar.*",
     ]
 
 

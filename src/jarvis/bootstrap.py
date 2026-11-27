@@ -33,6 +33,7 @@ from jarvis.timers.store import TimerStore
 from jarvis.tools.applications import AppCatalog, ApplicationTools
 from jarvis.tools.base import ToolRegistry, ToolSpec
 from jarvis.tools.browser import BrowserSession, BrowserTools, playwright_available
+from jarvis.tools.calendar import CalendarTools
 from jarvis.tools.files import FileTools
 from jarvis.tools.memory import MemoryTools
 from jarvis.tools.music import MusicTools
@@ -209,6 +210,7 @@ def build_runtime(
     timer_notifier = TimerNotifier()
     specs += TimerTools(timers, changed=timer_notifier.changed).specs()
     specs += ReminderTools(platform).specs()
+    specs += CalendarTools(platform).specs()
     registry = ToolRegistry(specs)
     audit = AuditLog(config.general.resolved_log_dir() / "audit.jsonl")
     dispatcher = Dispatcher(

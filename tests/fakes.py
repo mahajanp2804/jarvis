@@ -15,7 +15,10 @@ from jarvis.ai.base import ChatMessage, Completion, LLMBackend
 from jarvis.platforms.base import (
     AppControlAdapter,
     AppInfo,
+    CalendarApp,
+    CalendarEvent,
     DiagnosticCheck,
+    EventListing,
     MusicPlayer,
     NowPlaying,
     PlatformAdapter,
@@ -206,6 +209,40 @@ class FakeReminders(RemindersApp):
         self.completed.append(reminder_id)
 
 
+class FakeCalendar(CalendarApp):
+    """Calendars and events in memory."""
+
+    def __init__(self) -> None:
+        self.calendar_names = ["Home", "Work"]
+        self.items: list[CalendarEvent] = []
+        self.notes: list[str] = []
+        self.windows: list[tuple[datetime, datetime]] = []
+
+    def calendars(self) -> list[str]:
+        return list(self.calendar_names)
+
+    def events(self, start: datetime, end: datetime) -> EventListing:
+        self.windows.append((start, end))
+        found = [e for e in self.items if e.start < end and e.end > start]
+        return EventListing(sorted(found, key=lambda e: (not e.all_day, e.start)), self.notes)
+
+    def add_event(
+        self,
+        title: str,
+        start: datetime,
+        end: datetime,
+        *,
+        all_day: bool = False,
+        calendar: str | None = None,
+        location: str = "",
+    ) -> CalendarEvent:
+        event = CalendarEvent(
+            f"e{len(self.items) + 1}", title, calendar or "Home", start, end, all_day, location
+        )
+        self.items.append(event)
+        return event
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -220,6 +257,7 @@ class FakePlatform(PlatformAdapter):
         self.player = FakeMusicPlayer()
         self.alerts: list[str] = []
         self.reminder_app = FakeReminders()
+        self.calendar_app = FakeCalendar()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -249,6 +287,9 @@ class FakePlatform(PlatformAdapter):
 
     def reminders(self) -> RemindersApp:
         return self.reminder_app
+
+    def calendar(self) -> CalendarApp:
+        return self.calendar_app
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""
