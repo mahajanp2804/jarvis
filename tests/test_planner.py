@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from jarvis.agent.planner import (
+    GRAMMAR_MAX_LENGTH,
     MAX_ATTEMPTS,
     PlanAction,
     Planner,
@@ -109,7 +110,9 @@ def test_grammar_stays_small_with_every_tool_enabled(make_runtime: MakeRuntime) 
     runtime, _ = make_runtime(policy={"enabled_tools": ["*"]})
     schema = grammar_schema(build_plan_model(list(runtime.registry), 5).model_json_schema())
     assert all(
-        v <= 200 for v in re.findall(r'"maxLength": (\d+)', json.dumps(schema)) for v in [int(v)]
+        v <= GRAMMAR_MAX_LENGTH
+        for v in re.findall(r'"maxLength": (\d+)', json.dumps(schema))
+        for v in [int(v)]
     )
     grammar = llama_cpp.LlamaGrammar.from_json_schema(json.dumps(schema), verbose=False)
     assert len(grammar._grammar) < 60_000

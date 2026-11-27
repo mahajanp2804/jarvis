@@ -173,7 +173,9 @@ def build_plan_model(specs: Sequence[ToolSpec], max_steps: int) -> type[BaseMode
 
 # llama.cpp turns a string maxLength into one grammar rule per character, so big
 # limits (files.create content: 100,000) produce megabyte grammars that crash it.
-GRAMMAR_MAX_LENGTH = 200
+# Each kept limit costs ~8 grammar characters per allowed character: at 200, the
+# Phase 9 tools pushed the grammar past 60 KB; at 80 it's ~41 KB with 50 tools.
+GRAMMAR_MAX_LENGTH = 80
 
 
 def grammar_schema(schema: Any) -> Any:
