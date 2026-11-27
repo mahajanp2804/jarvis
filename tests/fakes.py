@@ -22,6 +22,8 @@ from jarvis.platforms.base import (
     DiagnosticCheck,
     EventListing,
     MusicPlayer,
+    Note,
+    NotesApp,
     NowPlaying,
     PlatformAdapter,
     Reminder,
@@ -266,6 +268,26 @@ class FakeContacts(ContactsBook):
         return found
 
 
+class FakeNotes(NotesApp):
+    """Notes in memory."""
+
+    def __init__(self) -> None:
+        self.items: list[Note] = []
+
+    def search(self, words: str, limit: int = 20) -> list[Note]:
+        key = words.casefold()
+        found = [n for n in self.items if key in n.title.casefold() or key in n.text.casefold()]
+        return [Note(n.id, n.title, n.folder, n.modified, n.text[:160]) for n in found[:limit]]
+
+    def read(self, note_id: str) -> Note:
+        return next(n for n in self.items if n.id == note_id)
+
+    def create(self, title: str, text: str, folder: str | None = None) -> Note:
+        note = Note(f"n{len(self.items) + 1}", title, folder or "Notes", None, f"{title}\n{text}")
+        self.items.append(note)
+        return note
+
+
 class FakePlatform(PlatformAdapter):
     name = "Fake"
 
@@ -282,6 +304,7 @@ class FakePlatform(PlatformAdapter):
         self.reminder_app = FakeReminders()
         self.calendar_app = FakeCalendar()
         self.contact_book = FakeContacts()
+        self.notes_app = FakeNotes()
 
     def find_by_name(
         self, words: Sequence[str], roots: Sequence[Path], *, folders_only: bool
@@ -317,6 +340,9 @@ class FakePlatform(PlatformAdapter):
 
     def contacts(self) -> ContactsBook:
         return self.contact_book
+
+    def notes(self) -> NotesApp:
+        return self.notes_app
 
     shortcut_names: tuple[str, ...] = ("Water Eject", "Extract Audio", "Set Brightness")
     shortcut_output: str = ""
