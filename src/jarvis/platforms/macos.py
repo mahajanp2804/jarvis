@@ -38,6 +38,8 @@ from jarvis.platforms.base import (
     CalendarApp,
     ContactsBook,
     DiagnosticCheck,
+    MailApp,
+    Messenger,
     MusicPlayer,
     NotesApp,
     PlatformAdapter,
@@ -459,6 +461,16 @@ class MacOSPlatform(PlatformAdapter):
         from jarvis.platforms.macos_notes import MacNotes
 
         return MacNotes(runner=self._run)
+
+    def messages(self) -> Messenger:
+        from jarvis.platforms.macos_messages import MacMessages
+
+        return MacMessages(runner=self._run)
+
+    def mail(self) -> MailApp:
+        from jarvis.platforms.macos_messages import MacMail
+
+        return MacMail(runner=self._run)
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:
         path = SYSTEM_SOUNDS / f"{sound}.aiff"

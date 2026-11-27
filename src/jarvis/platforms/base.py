@@ -299,6 +299,23 @@ class NotesApp(ABC):
         """A new note (in the default folder when ``folder`` is None)."""
 
 
+class Messenger(ABC):
+    """The Messages app (Phase 9)."""
+
+    @abstractmethod
+    def send(self, handle: str, text: str) -> str:
+        """Send ``text`` to a phone number or address; returns the service used
+        ("iMessage" or "SMS"). Delivery isn't confirmed."""
+
+
+class MailApp(ABC):
+    """The Mail app (Phase 9)."""
+
+    @abstractmethod
+    def compose(self, to: str, subject: str, body: str, *, send: bool) -> None:
+        """Send the email now, or open it in a compose window for you to send."""
+
+
 @dataclass(frozen=True)
 class ServiceStatus:
     """State of the background service as the OS service manager sees it."""
@@ -460,6 +477,12 @@ class PlatformAdapter(ABC):
 
     def notes(self) -> NotesApp:
         raise UnsupportedPlatformError(f"Notes isn't available on {self.name}.")
+
+    def messages(self) -> Messenger:
+        raise UnsupportedPlatformError(f"Messages isn't available on {self.name}.")
+
+    def mail(self) -> MailApp:
+        raise UnsupportedPlatformError(f"Mail isn't available on {self.name}.")
 
     def play_alert(self, sound: str, repeats: int = 3) -> None:  # noqa: B027 - optional
         """Play an alert sound in the background, for timers and alarms. Never raises."""
