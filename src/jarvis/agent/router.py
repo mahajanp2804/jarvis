@@ -180,6 +180,11 @@ _LIST_REMINDERS = re.compile(
     r"|my\s+reminders|what(?:'s|\s+is)\s+on\s+my\s+to-?do\s+list)$",
     _F,
 )
+_COMPLETE = re.compile(
+    r"^(?:mark\s+(?P<a>.+?)\s+as\s+(?:done|complete|completed|finished)|(?:tick|check|cross)"
+    r"\s+off\s+(?P<b>.+?))(?:\s+(?:on|from)\s+my\s+(?:list|reminders|to-?do\s+list))?$",
+    _F,
+)
 _CALENDAR = re.compile(
     r"^(?:what(?:'s|\s+is)\s+on\s+my\s+(?:calendar|schedule|agenda)|(?:show|check)\s+my"
     r"\s+(?:calendar|schedule|agenda)|what\s+do\s+i\s+have(?=\s+(?:today|tomorrow|this|next|on)))"
@@ -256,6 +261,10 @@ def _route_everyday(command: str) -> ToolCall | None:
         return call("reminders.add", title=what, **({"when": when} if when else {}))
     if _LIST_REMINDERS.match(command):
         return call("reminders.list")
+    if match := _COMPLETE.match(command):
+        return call(
+            "reminders.complete", title=(match.group("a") or match.group("b")).strip(" \"'")
+        )
     if mentions_later_day(command) and re.match(r"^(?:wake|set\s+an?\s+alarm)", command, _F):
         return None  # alarms ring today or tomorrow: the planner explains
     if match := _ALARM.match(command):

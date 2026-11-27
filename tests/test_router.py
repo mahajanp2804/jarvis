@@ -73,6 +73,8 @@ def test_routes_simple_commands(text: str, tool: str, arguments: dict[str, str])
          {"title": "call Sam", "when": "tomorrow morning"}),
         ("remind me to buy milk", "reminders.add", {"title": "buy milk"}),
         ("show my reminders", "reminders.list", {}),
+        ("mark buy milk as done", "reminders.complete", {"title": "buy milk"}),
+        ("tick off pay rent from my list", "reminders.complete", {"title": "pay rent"}),
         ("what's on my calendar tomorrow?", "calendar.events", {"when": "tomorrow"}),
         ("what's on my calendar", "calendar.events", {}),
         ("what do I have on friday", "calendar.events", {"when": "on friday"}),
